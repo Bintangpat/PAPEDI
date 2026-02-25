@@ -3,7 +3,17 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { Award, Loader2, LogOut, User, ChevronsUpDown } from "lucide-react";
+import {
+  Award,
+  Loader2,
+  LogOut,
+  User,
+  ChevronsUpDown,
+  Sparkles,
+  Info,
+  BookOpenCheck,
+} from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 import {
   Sidebar,
@@ -37,6 +47,8 @@ import { sidebarConfig, Role } from "@/config/sidebar.config";
 import { certificateService } from "@/services/certificate.service";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { useSurvey } from "@/hooks/use-survey";
+import { usePublicCourses } from "@/hooks/use-course";
 
 interface AppSidebarProps {
   role: Role;
@@ -54,6 +66,21 @@ export function AppSidebar({
   const { state } = useSidebar();
   const { user, logout } = useAuth();
   const [isGeneratingCert, setIsGeneratingCert] = useState(false);
+
+  // Recommendations Logic
+  const isStudent = role === "student";
+  const { data: surveyRes, isLoading: isLoadingSurvey } = useSurvey();
+  const hasSurvey = surveyRes?.hasSurvey;
+  const recommendedCategory = surveyRes?.data?.recommendedCategory;
+
+  const { data: recommendedCoursesData, isLoading: isLoadingCourses } =
+    usePublicCourses({
+      category: recommendedCategory || undefined,
+      limit: 3,
+      sort: "date_desc",
+    });
+
+  const recommendedCourses = recommendedCoursesData?.data || [];
 
   const items = sidebarConfig[role] || [];
 
@@ -176,6 +203,93 @@ export function AppSidebar({
                       </SidebarMenuItem>
                     );
                   })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+
+        {/* ── Recommendations for Students ── */}
+        {isStudent && (
+          <SidebarGroup className="mt-auto">
+            <SidebarGroupLabel className="flex items-center gap-2">
+              <Sparkles className="h-3.5 w-3.5 text-blue-500" />
+              <span>Rekomendasi</span>
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {!isLoadingSurvey && !hasSurvey && (
+                  <SidebarMenuItem>
+                    <div className="mx-2 rounded-lg bg-blue-50 p-3 dark:bg-blue-900/20">
+                      <div className="mb-2 flex items-start gap-2">
+                        <Info className="mt-0.5 h-4 w-4 text-blue-600" />
+                        <p className="text-[11px] leading-tight font-medium text-blue-700 dark:text-blue-300">
+                          Belum tau mau mulai dari mana?
+                        </p>
+                      </div>
+                      <Link href="/survey">
+                        <Button
+                          size="sm"
+                          className="h-7 w-full bg-blue-600 text-[10px] hover:bg-blue-700"
+                        >
+                          Ambil Survey Minat
+                        </Button>
+                      </Link>
+                    </div>
+                  </SidebarMenuItem>
+                )}
+
+                {hasSurvey && recommendedCourses.length > 0 && (
+                  <>
+                    {recommendedCourses.map((course) => {
+                      // Check if course is "new" (created in last 7 days)
+                      const isNew =
+                        new Date().getTime() -
+                          new Date(course.createdAt).getTime() <
+                        7 * 24 * 60 * 60 * 1000;
+
+                      return (
+                        <SidebarMenuItem key={course.id}>
+                          <SidebarMenuButton asChild tooltip={course.title}>
+                            <Link
+                              href={`/courses/${course.id}`}
+                              className="flex items-center justify-between gap-2 overflow-hidden px-2"
+                            >
+                              <div className="flex min-w-0 flex-1 items-center gap-2">
+                                <BookOpenCheck className="text-muted-foreground h-4 w-4 shrink-0" />
+                                <span className="truncate text-xs font-normal">
+                                  {course.title}
+                                </span>
+                              </div>
+                              {isNew && (
+                                <Badge className="h-4 shrink-0 border-none bg-emerald-500 px-1 py-0 text-[8px] hover:bg-emerald-500">
+                                  Baru
+                                </Badge>
+                              )}
+                            </Link>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      );
+                    })}
+                    <SidebarMenuItem className="mt-1">
+                      <Link
+                        href="/courses"
+                        className="text-muted-foreground hover:text-primary px-3 text-[10px] transition-colors"
+                      >
+                        Lihat semua katalog &rarr;
+                      </Link>
+                    </SidebarMenuItem>
+                  </>
+                )}
+
+                {hasSurvey &&
+                  recommendedCourses.length === 0 &&
+                  !isLoadingCourses && (
+                    <SidebarMenuItem>
+                      <p className="text-muted-foreground px-3 text-[10px] leading-tight italic">
+                        Belum ada pelatihan baru di kategori kamu.
+                      </p>
+                    </SidebarMenuItem>
+                  )}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
