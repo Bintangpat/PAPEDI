@@ -75,11 +75,11 @@ export function LessonForm({
         type: values.type,
         content: values.content,
         videoUrl: values.videoUrl,
-        order: order || 1, // Default order if not provided
+        // order tidak dikirim — backend auto-calculate dari jumlah lesson yang ada
       }),
     onSuccess: () => {
       toast.success("Materi berhasil ditambahkan!");
-      queryClient.invalidateQueries({ queryKey: ["course"] }); // Invalidate course to refresh modules/lessons
+      queryClient.invalidateQueries({ queryKey: ["course"] });
       onSuccess();
     },
     onError: (error: any) => {

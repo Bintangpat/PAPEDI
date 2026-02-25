@@ -1,15 +1,37 @@
 import api from "@/lib/axios";
+import { Enrollment, ModuleProgressData } from "@/types/course";
 
 interface EnrollmentResponse {
   success: boolean;
   message?: string;
-  data?: any;
+  data?: Enrollment;
+}
+
+interface EnrollmentsListResponse {
+  success: boolean;
+  data: (Enrollment & {
+    progress: number;
+    completedModules: number;
+    totalModules: number;
+  })[];
 }
 
 interface CheckEnrollmentResponse {
   success: boolean;
   isEnrolled: boolean;
-  data?: any;
+  data?: {
+    id: string;
+    userId: string;
+    courseId: string;
+    status: string;
+    finalScore?: number | null;
+    isEligibleCert: boolean;
+    enrolledAt: string;
+    completedLessons: string[];
+    completedQuizzes: string[];
+    completedProjects: string[];
+    moduleProgress: ModuleProgressData[];
+  };
 }
 
 export const enrollmentService = {
@@ -31,7 +53,7 @@ export const enrollmentService = {
 
   // Get my enrollments
   getMyEnrollments: async () => {
-    const { data } = await api.get<EnrollmentResponse>("/enrollments/me");
+    const { data } = await api.get<EnrollmentsListResponse>("/enrollments/me");
     return data.data;
   },
 

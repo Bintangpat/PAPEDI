@@ -35,7 +35,7 @@ export interface Module {
 export interface CreateModuleData {
   title: string;
   courseId: string;
-  order: number;
+  order?: number; // Auto-calculated by backend
 }
 
 export interface UpdateModuleData {
@@ -49,7 +49,7 @@ export interface CreateLessonData {
   type: LessonType;
   content?: string;
   videoUrl?: string;
-  order: number;
+  order?: number; // Auto-calculated by backend
 }
 
 export interface UpdateLessonData {

@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import prisma from "../config/prisma.js";
 import { AppError } from "../utils/AppError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import { evaluateModuleCompletion } from "./enrollment.controller.js";
 
 /**
  * @desc    Get quiz by Module ID (Student)
@@ -187,7 +188,10 @@ export const submitQuiz = asyncHandler(async (req: Request, res: Response) => {
 
   const quiz: any = await prisma.quiz.findUnique({
     where: { id: id as string },
-    include: { questions: { orderBy: { order: "asc" } } },
+    include: {
+      questions: { orderBy: { order: "asc" } },
+      module: { select: { id: true, courseId: true } },
+    },
   });
 
   if (!quiz) throw new AppError("Quiz tidak ditemukan.", 404);
@@ -207,6 +211,14 @@ export const submitQuiz = asyncHandler(async (req: Request, res: Response) => {
   const score = (correctCount / quiz.questions.length) * 100;
   const passed = score >= quiz.passingScore;
 
+  // Count existing attempts for attempt number
+  const existingAttempts = await prisma.quizAttempt.count({
+    where: {
+      userId: req.user!.id,
+      quizId: id as string,
+    },
+  });
+
   // Record Attempt
   const attempt = await prisma.quizAttempt.create({
     data: {
@@ -215,34 +227,32 @@ export const submitQuiz = asyncHandler(async (req: Request, res: Response) => {
       answers,
       score,
       passed,
+      attemptNumber: existingAttempts + 1,
     },
   });
 
-  // If passed, update enrollment progress
-  if (passed) {
-    const moduleId = quiz.moduleId;
-    // Find enrollment via courseId is tricky because we only have quizId -> moduleId -> courseId
-    // We need to fetch courseId from quiz first
-    const quizWithCourse = await prisma.quiz.findUnique({
-      where: { id: id as string },
-      include: { module: true },
-    });
+  // Update progress
+  const moduleId = quiz.module.id;
+  const courseId = quiz.module.courseId;
+  const userId = req.user!.id;
 
-    if (quizWithCourse) {
-      const courseId = quizWithCourse.module.courseId;
-      const enrollment = await prisma.enrollment.findUnique({
-        where: { userId_courseId: { userId: req.user!.id, courseId } },
+  const enrollment = await prisma.enrollment.findUnique({
+    where: { userId_courseId: { userId, courseId } },
+  });
+
+  if (enrollment) {
+    // Legacy: still push to completedQuizzes array for backward compat
+    if (passed && !enrollment.completedQuizzes.includes(id as string)) {
+      await prisma.enrollment.update({
+        where: { id: enrollment.id },
+        data: {
+          completedQuizzes: { push: id as string },
+        },
       });
-
-      if (enrollment && !enrollment.completedQuizzes.includes(id as string)) {
-        await prisma.enrollment.update({
-          where: { id: enrollment.id },
-          data: {
-            completedQuizzes: { push: id as string },
-          },
-        });
-      }
     }
+
+    // New: evaluate module completion via ModuleProgress
+    await evaluateModuleCompletion(enrollment.id, moduleId, userId, courseId);
   }
 
   res.status(200).json({

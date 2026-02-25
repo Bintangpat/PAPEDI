@@ -3,6 +3,7 @@ import prisma from "../config/prisma.js";
 import { AppError } from "../utils/AppError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { SubmissionStatus } from "@prisma/client";
+import { evaluateModuleCompletion } from "./enrollment.controller.js";
 
 /**
  * @desc    Get Mentor Dashboard Stats
@@ -37,6 +38,7 @@ export const getMentorStats = asyncHandler(
     const totalCourses = await prisma.course.count({
       where: {
         createdBy: mentorId,
+        deletedAt: null,
       },
     });
 
@@ -108,15 +110,11 @@ export const getSubmissions = asyncHandler(
 export const gradeSubmission = asyncHandler(
   async (req: Request, res: Response) => {
     const { id } = req.params;
-    const { status, feedback } = req.body;
+    const { status, feedback, score } = req.body;
     const mentorId = req.user!.id;
 
     if (!status || !feedback) {
       throw new AppError("Status dan Feedback wajib diisi.", 400);
-    }
-
-    if (!["LULUS", "REVISI"].includes(status)) {
-      throw new AppError("Status tidak valid. Gunakan LULUS atau REVISI.", 400);
     }
 
     const submission = await prisma.projectSubmission.findFirst({
@@ -124,6 +122,13 @@ export const gradeSubmission = asyncHandler(
         id: id as string,
         course: {
           createdBy: mentorId,
+        },
+      },
+      include: {
+        project: {
+          include: {
+            module: true,
+          },
         },
       },
     });
@@ -135,18 +140,45 @@ export const gradeSubmission = asyncHandler(
       );
     }
 
+    // Calculate isPassed based on project's passingScore
+    const passingScore = submission.project?.passingScore ?? 80;
+    const numericScore = typeof score === "number" ? score : null;
+    const isPassed =
+      status === "LULUS" && numericScore !== null
+        ? numericScore >= passingScore
+        : status === "LULUS";
+
     const updatedSubmission = await prisma.projectSubmission.update({
       where: { id: id as string },
       data: {
         status: status as SubmissionStatus,
         feedback,
+        score: numericScore,
+        isPassed,
         reviewedBy: mentorId,
       },
     });
 
-    // TODO: If LULUS, maybe generate certificate or update enrollment progress?
-    if (status === "LULUS") {
-      // Future: Generate Certificate logic here
+    // If passed, evaluate module completion and enrollment status
+    if (isPassed && submission.project) {
+      const moduleId = submission.project.module.id;
+      const enrollment = await prisma.enrollment.findUnique({
+        where: {
+          userId_courseId: {
+            userId: submission.userId,
+            courseId: submission.courseId,
+          },
+        },
+      });
+
+      if (enrollment) {
+        await evaluateModuleCompletion(
+          enrollment.id,
+          moduleId,
+          submission.userId,
+          submission.courseId,
+        );
+      }
     }
 
     res.status(200).json({

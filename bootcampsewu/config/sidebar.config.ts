@@ -9,16 +9,19 @@ import {
   Compass,
   BarChart3,
   Activity,
+  FileQuestion,
+  FolderKanban,
 } from "lucide-react";
 
 export type Role = "student" | "mentor" | "admin";
 
 export interface SidebarItemConfig {
   label: string;
-  href: (params?: any) => string;
+  href: (params?: { courseId?: string; moduleId?: string }) => string;
   icon: any;
   type?: "link" | "certificate";
   requireCourseId?: boolean;
+  requireModuleId?: boolean;
 }
 
 export const sidebarConfig: Record<Role, SidebarItemConfig[]> = {
@@ -70,14 +73,28 @@ export const sidebarConfig: Record<Role, SidebarItemConfig[]> = {
       icon: LayoutDashboard,
     },
     {
+      label: "Kursus Saya",
+      href: () => "/mentor/courses",
+      icon: BookOpen,
+    },
+    {
       label: "Penilaian Project",
       href: () => "/mentor/submissions",
       icon: ClipboardList,
     },
+    // Context-aware: only shown when inside a module page
     {
-      label: "Kursus Saya",
-      href: () => "/mentor/courses",
-      icon: BookOpen,
+      label: "Quiz Modul",
+      href: (params) => `/mentor/modules/${params?.moduleId}/quiz`,
+      icon: FileQuestion,
+      requireModuleId: true,
+    },
+    {
+      label: "Project Modul",
+      href: (params) =>
+        `/mentor/modules/${params?.moduleId}/project/submissions`,
+      icon: FolderKanban,
+      requireModuleId: true,
     },
   ],
 

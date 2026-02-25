@@ -11,10 +11,10 @@ import { LessonType } from "@prisma/client";
  */
 export const createLesson = asyncHandler(
   async (req: Request, res: Response) => {
-    const { title, moduleId, type, content, videoUrl, order } = req.body;
+    const { title, moduleId, type, content, videoUrl } = req.body;
 
-    if (!title || !moduleId || order === undefined) {
-      throw new AppError("Title, Module ID, dan Order wajib diisi.", 400);
+    if (!title || !moduleId) {
+      throw new AppError("Title dan Module ID wajib diisi.", 400);
     }
 
     const module = await prisma.module.findUnique({
@@ -34,11 +34,18 @@ export const createLesson = asyncHandler(
       );
     }
 
+    // Auto-calculate order: ambil jumlah lesson yang sudah ada + 1
+    // Ini mencegah P2002 unique constraint error jika frontend kirim order yang salah
+    const lessonCount = await prisma.lesson.count({
+      where: { moduleId: moduleId as string },
+    });
+    const order = lessonCount + 1;
+
     const lesson = await prisma.lesson.create({
       data: {
         title,
         moduleId,
-        type: type as LessonType,
+        type: (type as LessonType) || "TEXT",
         content,
         videoUrl,
         order,

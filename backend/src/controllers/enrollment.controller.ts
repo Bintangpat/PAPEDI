@@ -15,7 +15,13 @@ export const enrollCourse = asyncHandler(
 
     // Check if course exists and is published
     const course = await prisma.course.findUnique({
-      where: { id: courseId },
+      where: { id: courseId, deletedAt: null },
+      include: {
+        modules: {
+          orderBy: { order: "asc" },
+          select: { id: true },
+        },
+      },
     });
 
     if (!course) {
@@ -40,20 +46,36 @@ export const enrollCourse = asyncHandler(
       throw new AppError("Anda sudah terdaftar di kursus ini.", 400);
     }
 
-    // Create enrollment
-    const enrollment = await prisma.enrollment.create({
-      data: {
-        userId,
-        courseId,
-      },
-      include: {
-        course: {
-          select: {
-            title: true,
-            thumbnail: true,
+    // Create enrollment + ModuleProgress entries in a transaction
+    const enrollment = await prisma.$transaction(async (tx) => {
+      const newEnrollment = await tx.enrollment.create({
+        data: {
+          userId,
+          courseId,
+          status: "ACTIVE",
+        },
+        include: {
+          course: {
+            select: {
+              title: true,
+              thumbnail: true,
+            },
           },
         },
-      },
+      });
+
+      // Create ModuleProgress for each module (all IN_PROGRESS per PRD — lessons always accessible)
+      if (course.modules.length > 0) {
+        await tx.moduleProgress.createMany({
+          data: course.modules.map((mod) => ({
+            enrollmentId: newEnrollment.id,
+            moduleId: mod.id,
+            status: "IN_PROGRESS" as const,
+          })),
+        });
+      }
+
+      return newEnrollment;
     });
 
     res.status(201).json({
@@ -86,13 +108,38 @@ export const getMyEnrollments = asyncHandler(
             },
           },
         },
+        moduleProgress: {
+          select: {
+            status: true,
+            isPassed: true,
+          },
+        },
       },
       orderBy: { enrolledAt: "desc" },
     });
 
+    // Enrich with progress percentage
+    const enriched = enrollments.map((enrollment) => {
+      const totalModules = enrollment.moduleProgress.length;
+      const completedModules = enrollment.moduleProgress.filter(
+        (mp) => mp.status === "COMPLETED",
+      ).length;
+      const progress =
+        totalModules > 0
+          ? Math.round((completedModules / totalModules) * 100)
+          : 0;
+
+      return {
+        ...enrollment,
+        progress,
+        completedModules,
+        totalModules,
+      };
+    });
+
     res.status(200).json({
       success: true,
-      data: enrollments,
+      data: enriched,
     });
   },
 );
@@ -112,6 +159,22 @@ export const checkEnrollment = asyncHandler(
         userId_courseId: {
           userId,
           courseId,
+        },
+      },
+      include: {
+        moduleProgress: {
+          include: {
+            module: {
+              select: {
+                id: true,
+                title: true,
+                order: true,
+              },
+            },
+          },
+          orderBy: {
+            module: { order: "asc" },
+          },
         },
       },
     });
@@ -142,7 +205,18 @@ export const checkEnrollment = asyncHandler(
       success: true,
       isEnrolled: true,
       data: {
-        ...enrollment,
+        id: enrollment.id,
+        userId: enrollment.userId,
+        courseId: enrollment.courseId,
+        status: enrollment.status,
+        finalScore: enrollment.finalScore,
+        isEligibleCert: enrollment.isEligibleCert,
+        enrolledAt: enrollment.enrolledAt,
+        // Legacy arrays (still accessible for backward compat)
+        completedLessons: enrollment.completedLessons,
+        completedQuizzes: enrollment.completedQuizzes,
+        // New structured progress
+        moduleProgress: enrollment.moduleProgress,
         completedProjects,
       },
     });
@@ -175,8 +249,24 @@ export const markLessonComplete = asyncHandler(
       throw new AppError("Anda belum terdaftar di kursus ini.", 403);
     }
 
-    // Add lessonId to completedLessons if not already present
-    // Prisma doesn't support addToSet for scalar arrays easily in update, so we fetch, check, update
+    // Verify the lesson exists and get its module
+    const lesson = await prisma.lesson.findUnique({
+      where: { id: lessonId },
+      include: {
+        module: {
+          include: {
+            lessons: { select: { id: true } },
+            quiz: { select: { id: true } },
+          },
+        },
+      },
+    });
+
+    if (!lesson) {
+      throw new AppError("Materi tidak ditemukan.", 404);
+    }
+
+    // Update legacy array (backward compatibility)
     const completedLessons = enrollment.completedLessons || [];
     if (!completedLessons.includes(lessonId)) {
       await prisma.enrollment.update({
@@ -189,9 +279,244 @@ export const markLessonComplete = asyncHandler(
       });
     }
 
+    // Evaluate module completion after marking lesson
+    await evaluateModuleCompletion(
+      enrollment.id,
+      lesson.module.id,
+      userId,
+      courseId,
+    );
+
     res.status(200).json({
       success: true,
       message: "Materi ditandai selesai.",
     });
   },
 );
+
+/**
+ * Helper: Evaluate if a module is completed after a progress action
+ * A module is COMPLETED when all lessons are done AND quiz is passed (if exists)
+ */
+async function evaluateModuleCompletion(
+  enrollmentId: string,
+  moduleId: string,
+  userId: string,
+  courseId: string,
+) {
+  // Get module content
+  const mod = await prisma.module.findUnique({
+    where: { id: moduleId },
+    include: {
+      lessons: { select: { id: true } },
+      quiz: { select: { id: true, passingScore: true } },
+    },
+  });
+
+  if (!mod) return;
+
+  // Get enrollment with legacy arrays
+  const enrollment = await prisma.enrollment.findUnique({
+    where: { id: enrollmentId },
+  });
+
+  if (!enrollment) return;
+
+  // Check all lessons completed
+  const lessonIds = mod.lessons.map((l) => l.id);
+  const allLessonsCompleted = lessonIds.every((id) =>
+    enrollment.completedLessons.includes(id),
+  );
+
+  // Check quiz passed (best score)
+  let quizPassed = true; // No quiz = auto pass
+  let bestQuizScore: number | null = null;
+
+  if (mod.quiz) {
+    const bestAttempt = await prisma.quizAttempt.findFirst({
+      where: {
+        userId,
+        quizId: mod.quiz.id,
+        passed: true,
+      },
+      orderBy: { score: "desc" },
+    });
+
+    quizPassed = !!bestAttempt;
+    bestQuizScore = bestAttempt?.score ?? null;
+  }
+
+  const isCompleted = allLessonsCompleted && quizPassed;
+
+  // Upsert ModuleProgress
+  await prisma.moduleProgress.upsert({
+    where: {
+      enrollmentId_moduleId: {
+        enrollmentId,
+        moduleId,
+      },
+    },
+    create: {
+      enrollmentId,
+      moduleId,
+      status: isCompleted ? "COMPLETED" : "IN_PROGRESS",
+      isPassed: isCompleted,
+      averageQuizScore: bestQuizScore,
+    },
+    update: {
+      status: isCompleted ? "COMPLETED" : "IN_PROGRESS",
+      isPassed: isCompleted,
+      averageQuizScore: bestQuizScore,
+    },
+  });
+
+  // If module completed, re-evaluate enrollment status
+  if (isCompleted) {
+    await evaluateEnrollmentStatus(enrollmentId, userId, courseId);
+  }
+}
+
+/**
+ * Helper: Evaluate if all modules are completed and update enrollment status
+ */
+async function evaluateEnrollmentStatus(
+  enrollmentId: string,
+  userId: string,
+  courseId: string,
+) {
+  const enrollment = await prisma.enrollment.findUnique({
+    where: { id: enrollmentId },
+    include: {
+      moduleProgress: true,
+      course: {
+        include: {
+          modules: {
+            include: {
+              project: { select: { id: true } },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!enrollment) return;
+
+  const allModulesCompleted =
+    enrollment.moduleProgress.length > 0 &&
+    enrollment.moduleProgress.every((mp) => mp.status === "COMPLETED");
+
+  if (!allModulesCompleted) return;
+
+  // Check all projects passed
+  const projectIds = enrollment.course.modules
+    .flatMap((m) => (m.project ? [m.project.id] : []))
+    .filter(Boolean);
+
+  let allProjectsPassed = true;
+  if (projectIds.length > 0) {
+    const passedCount = await prisma.projectSubmission.count({
+      where: {
+        userId,
+        courseId,
+        status: "LULUS",
+        projectId: { in: projectIds },
+      },
+    });
+    allProjectsPassed = passedCount >= projectIds.length;
+  }
+
+  if (allModulesCompleted && allProjectsPassed) {
+    // Calculate final score
+    const finalScore = await calculateFinalScore(userId, courseId);
+    const isEligible = finalScore !== null && finalScore >= 80;
+
+    await prisma.enrollment.update({
+      where: { id: enrollmentId },
+      data: {
+        status: isEligible ? "COMPLETED" : "FAILED",
+        finalScore,
+        isEligibleCert: isEligible,
+      },
+    });
+  }
+}
+
+/**
+ * Helper: Calculate final score using weighted formula
+ * FinalScore = (WeightedAverageQuizScore × 0.4) + (ProjectScore × 0.6)
+ */
+async function calculateFinalScore(
+  userId: string,
+  courseId: string,
+): Promise<number | null> {
+  const course = await prisma.course.findUnique({
+    where: { id: courseId },
+    include: {
+      modules: {
+        include: {
+          quiz: { select: { id: true } },
+          project: { select: { id: true } },
+        },
+      },
+    },
+  });
+
+  if (!course) return null;
+
+  // Calculate weighted average quiz score (best scores only)
+  let totalQuizScore = 0;
+  let quizCount = 0;
+
+  for (const mod of course.modules) {
+    if (mod.quiz) {
+      const best = await prisma.quizAttempt.findFirst({
+        where: { userId, quizId: mod.quiz.id },
+        orderBy: { score: "desc" },
+      });
+
+      if (best) {
+        totalQuizScore += best.score;
+        quizCount++;
+      }
+    }
+  }
+
+  const avgQuizScore = quizCount > 0 ? totalQuizScore / quizCount : 0;
+
+  // Calculate project score (average of all project scores)
+  const projectIds = course.modules
+    .flatMap((m) => (m.project ? [m.project.id] : []))
+    .filter(Boolean);
+
+  let avgProjectScore = 0;
+  if (projectIds.length > 0) {
+    const submissions = await prisma.projectSubmission.findMany({
+      where: {
+        userId,
+        courseId,
+        status: "LULUS",
+        projectId: { in: projectIds },
+        score: { not: null },
+      },
+      select: { score: true },
+    });
+
+    if (submissions.length > 0) {
+      avgProjectScore =
+        submissions.reduce((sum, s) => sum + (s.score ?? 0), 0) /
+        submissions.length;
+    }
+  }
+
+  // Final formula: Quiz 40% + Project 60%
+  const finalScore = avgQuizScore * 0.4 + avgProjectScore * 0.6;
+  return Math.round(finalScore * 100) / 100;
+}
+
+// Export helpers for use in other controllers
+export {
+  evaluateModuleCompletion,
+  evaluateEnrollmentStatus,
+  calculateFinalScore,
+};

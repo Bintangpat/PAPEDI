@@ -57,6 +57,11 @@ export function AppSidebar({
 
   const items = sidebarConfig[role] || [];
 
+  // Extract moduleId from URL if we're inside a module page
+  // e.g. /mentor/modules/abc123/quiz → moduleId = "abc123"
+  const moduleIdMatch = pathname.match(/\/mentor\/modules\/([^/]+)/);
+  const moduleIdFromPath = moduleIdMatch?.[1];
+
   const handleClaimCertificate = async () => {
     if (!courseId) return;
 
@@ -90,91 +95,96 @@ export function AppSidebar({
         </div>
       </SidebarHeader>
       <SidebarContent>
+        {/* ── Global Navigation ── */}
         <SidebarGroup>
           <SidebarGroupLabel>Menu</SidebarGroupLabel>
-
           <SidebarGroupContent>
             <SidebarMenu>
-              {items.map((item) => {
-                if (item.requireCourseId && !courseId) return null;
+              {items
+                .filter((item) => !item.requireModuleId)
+                .map((item) => {
+                  if (item.requireCourseId && !courseId) return null;
 
-                const href = item.href({ courseId });
-                const isActive = pathname === href;
+                  const href = item.href({
+                    courseId,
+                    moduleId: moduleIdFromPath,
+                  });
+                  const isActive =
+                    pathname === href || pathname.startsWith(href + "/");
 
-                // Certificate special handling
-                if (item.type === "certificate") {
+                  if (item.type === "certificate") {
+                    return (
+                      <SidebarMenuItem key={item.label}>
+                        <Button
+                          variant={isCourseCompleted ? "default" : "secondary"}
+                          disabled={!isCourseCompleted || isGeneratingCert}
+                          onClick={handleClaimCertificate}
+                          className="w-full justify-start gap-2"
+                        >
+                          {isGeneratingCert ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Award className="h-4 w-4" />
+                          )}
+                          {isCourseCompleted
+                            ? "Klaim Sertifikat"
+                            : "Selesaikan Kursus"}
+                        </Button>
+                      </SidebarMenuItem>
+                    );
+                  }
+
                   return (
                     <SidebarMenuItem key={item.label}>
-                      <Button
-                        variant={isCourseCompleted ? "default" : "secondary"}
-                        disabled={!isCourseCompleted || isGeneratingCert}
-                        onClick={handleClaimCertificate}
-                        className="w-full justify-start gap-2"
-                      >
-                        {isGeneratingCert ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Award className="h-4 w-4" />
-                        )}
-                        {isCourseCompleted
-                          ? "Klaim Sertifikat"
-                          : "Selesaikan Kursus"}
-                      </Button>
+                      <SidebarMenuButton asChild isActive={isActive}>
+                        <Link href={href}>
+                          <item.icon />
+                          <span>{item.label}</span>
+                        </Link>
+                      </SidebarMenuButton>
                     </SidebarMenuItem>
                   );
-                }
-
-                return (
-                  <SidebarMenuItem key={item.label}>
-                    <SidebarMenuButton asChild isActive={isActive}>
-                      <Link href={href}>
-                        <item.icon />
-                        <span>{item.label}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
+                })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {/* ── Module-Context Navigation (only visible inside a module page) ── */}
+        {moduleIdFromPath && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Modul Aktif</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {items
+                  .filter((item) => item.requireModuleId)
+                  .map((item) => {
+                    const href = item.href({
+                      courseId,
+                      moduleId: moduleIdFromPath,
+                    });
+                    const isActive =
+                      pathname === href || pathname.startsWith(href + "/");
+
+                    return (
+                      <SidebarMenuItem key={item.label}>
+                        <SidebarMenuButton asChild isActive={isActive}>
+                          <Link href={href}>
+                            <item.icon />
+                            <span>{item.label}</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
 
       <SidebarFooter>
         <SidebarMenu>
-          <SidebarMenuItem>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <SidebarMenuButton
-                  size="lg"
-                  className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-                >
-                  <Avatar className="h-8 w-8 rounded-lg">
-                    <AvatarImage src={user?.avatar} alt={user?.name} />
-                    <AvatarFallback className="rounded-lg">
-                      {user?.name?.charAt(0)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="grid flex-1 text-left text-sm leading-tight">
-                    <span className="truncate font-semibold">{user?.name}</span>
-                    <span className="truncate text-xs">{user?.email}</span>
-                  </div>
-                  <ChevronsUpDown className="ml-auto size-4" />
-                </SidebarMenuButton>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
-                side="bottom"
-                align="end"
-                sideOffset={4}
-              >
-                <DropdownMenuItem onClick={logout}>
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Log out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarMenuItem>
+          <SidebarMenuItem></SidebarMenuItem>
           <SidebarMenuItem>
             <div className="flex items-center justify-between px-2 py-1.5">
               <div className="text-muted-foreground text-xs transition-opacity group-data-[collapsible=icon]:opacity-0">

@@ -11,70 +11,24 @@ export const getDashboardSummary = asyncHandler(
   async (req: Request, res: Response) => {
     const userId = req.user!.id;
 
-    // Get enrollments with course module counts
+    // Get enrollments with module progress
     const enrollments = await prisma.enrollment.findMany({
       where: { userId },
       include: {
-        course: {
-          include: {
-            modules: {
-              include: {
-                quiz: true,
-                project: true,
-              },
-            },
-          },
+        moduleProgress: {
+          select: { status: true },
         },
       },
     });
 
     const totalCourses = enrollments.length;
 
-    // Calculate completed courses
-    let completedCourses = 0;
-    for (const enrollment of enrollments) {
-      const totalModules = enrollment.course.modules.length;
-      if (totalModules === 0) continue;
+    // Completed courses: enrollment status = COMPLETED
+    const completedCourses = enrollments.filter(
+      (e) => e.status === "COMPLETED",
+    ).length;
 
-      let completedModules = 0;
-      for (const mod of enrollment.course.modules) {
-        let moduleCompleted = true;
-
-        // Check quiz completion
-        if (mod.quiz) {
-          const quizPassed = enrollment.completedQuizzes.includes(mod.quiz.id);
-          if (!quizPassed) moduleCompleted = false;
-        }
-
-        // Check project completion
-        if (mod.project) {
-          const projectApproved = await prisma.projectSubmission.findFirst({
-            where: {
-              userId,
-              projectId: mod.project.id,
-              status: "LULUS",
-            },
-          });
-          if (!projectApproved) moduleCompleted = false;
-        }
-
-        // Check lessons completion
-        const lessons = await prisma.lesson.findMany({
-          where: { moduleId: mod.id },
-          select: { id: true },
-        });
-        const allLessonsCompleted = lessons.every((l) =>
-          enrollment.completedLessons.includes(l.id),
-        );
-        if (!allLessonsCompleted && lessons.length > 0) moduleCompleted = false;
-
-        if (moduleCompleted) completedModules++;
-      }
-
-      if (completedModules === totalModules) completedCourses++;
-    }
-
-    // Average quiz score
+    // Average quiz score (best scores)
     const quizStats = await prisma.quizAttempt.aggregate({
       where: { userId },
       _avg: { score: true },
@@ -114,75 +68,52 @@ export const getDashboardProgress = asyncHandler(
             id: true,
             title: true,
             thumbnail: true,
-            modules: {
+          },
+        },
+        moduleProgress: {
+          select: {
+            status: true,
+            isPassed: true,
+            averageQuizScore: true,
+            module: {
               select: {
                 id: true,
-                quiz: { select: { id: true } },
-                project: { select: { id: true } },
-                lesson: { select: { id: true } },
+                title: true,
+                order: true,
               },
             },
+          },
+          orderBy: {
+            module: { order: "asc" },
           },
         },
       },
       orderBy: { enrolledAt: "desc" },
     });
 
-    const progressData = [];
-
-    for (const enrollment of enrollments) {
-      const course = enrollment.course;
-      const totalModules = course.modules.length;
-
-      let completedModules = 0;
-      for (const mod of course.modules) {
-        let moduleCompleted = true;
-
-        // Check lessons
-        if (mod.lesson.length > 0) {
-          const allLessonsCompleted = mod.lesson.every((l) =>
-            enrollment.completedLessons.includes(l.id),
-          );
-          if (!allLessonsCompleted) moduleCompleted = false;
-        }
-
-        // Check quiz
-        if (mod.quiz) {
-          if (!enrollment.completedQuizzes.includes(mod.quiz.id)) {
-            moduleCompleted = false;
-          }
-        }
-
-        // Check project
-        if (mod.project) {
-          const projectApproved = await prisma.projectSubmission.findFirst({
-            where: {
-              userId,
-              projectId: mod.project.id,
-              status: "LULUS",
-            },
-          });
-          if (!projectApproved) moduleCompleted = false;
-        }
-
-        if (moduleCompleted) completedModules++;
-      }
-
+    const progressData = enrollments.map((enrollment) => {
+      const totalModules = enrollment.moduleProgress.length;
+      const completedModules = enrollment.moduleProgress.filter(
+        (mp) => mp.status === "COMPLETED",
+      ).length;
       const progress =
         totalModules > 0
           ? Math.round((completedModules / totalModules) * 100)
           : 0;
 
-      progressData.push({
-        courseId: course.id,
-        title: course.title,
-        thumbnail: course.thumbnail,
+      return {
+        courseId: enrollment.course.id,
+        title: enrollment.course.title,
+        thumbnail: enrollment.course.thumbnail,
         progress,
         totalModules,
         completedModules,
         enrolledAt: enrollment.enrolledAt,
-      });
-    }
+        status: enrollment.status,
+        finalScore: enrollment.finalScore,
+        moduleProgress: enrollment.moduleProgress,
+      };
+    });
 
     res.status(200).json({
       success: true,
@@ -202,52 +133,52 @@ export const getDashboardActivity = asyncHandler(
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
 
-    // Gather activities from different sources
-    const [quizAttempts, projectSubmissions, recentEnrollments] =
-      await Promise.all([
-        prisma.quizAttempt.findMany({
-          where: { userId },
-          include: {
-            quiz: {
-              include: {
-                module: {
-                  include: {
-                    course: { select: { title: true } },
-                  },
+    // Fetch recent quiz attempts, project submissions, and enrollments
+    const [quizAttempts, submissions, enrollments] = await Promise.all([
+      prisma.quizAttempt.findMany({
+        where: { userId },
+        include: {
+          quiz: {
+            include: {
+              module: {
+                include: {
+                  course: { select: { title: true } },
                 },
               },
             },
           },
-          orderBy: { attemptedAt: "desc" },
-          take: 50,
-        }),
-        prisma.projectSubmission.findMany({
-          where: { userId },
-          include: {
-            course: { select: { title: true } },
-            project: { select: { title: true } },
-          },
-          orderBy: { submittedAt: "desc" },
-          take: 50,
-        }),
-        prisma.enrollment.findMany({
-          where: { userId },
-          include: {
-            course: { select: { title: true } },
-          },
-          orderBy: { enrolledAt: "desc" },
-          take: 50,
-        }),
-      ]);
+        },
+        orderBy: { attemptedAt: "desc" },
+        take: 50,
+      }),
+      prisma.projectSubmission.findMany({
+        where: { userId },
+        include: {
+          course: { select: { title: true } },
+          project: { select: { title: true } },
+        },
+        orderBy: { submittedAt: "desc" },
+        take: 50,
+      }),
+      prisma.enrollment.findMany({
+        where: { userId },
+        include: {
+          course: { select: { title: true } },
+        },
+        orderBy: { enrolledAt: "desc" },
+        take: 50,
+      }),
+    ]);
 
     // Normalize into activity items
-    type ActivityItem = {
+    interface ActivityItem {
       type: string;
       title: string;
       courseName: string;
       date: Date;
-      status: string;
-    };
+      status?: string;
+      score?: number;
+    }
 
     const activities: ActivityItem[] = [];
 
@@ -257,40 +188,39 @@ export const getDashboardActivity = asyncHandler(
         title: `Quiz: ${qa.quiz.module.title}`,
         courseName: qa.quiz.module.course.title,
         date: qa.attemptedAt,
-        status: qa.passed ? "Lulus" : "Tidak Lulus",
+        status: qa.passed ? "PASSED" : "FAILED",
+        score: qa.score,
       });
     }
 
-    for (const ps of projectSubmissions) {
+    for (const sub of submissions) {
       activities.push({
         type: "project",
-        title: `Project: ${ps.project?.title ?? "Submission"}`,
-        courseName: ps.course.title,
-        date: ps.submittedAt,
-        status: ps.status,
+        title: `Project: ${sub.project?.title || "Submission"}`,
+        courseName: sub.course.title,
+        date: sub.submittedAt,
+        status: sub.status,
+        score: sub.score ?? undefined,
       });
     }
 
-    for (const en of recentEnrollments) {
+    for (const enr of enrollments) {
       activities.push({
         type: "enrollment",
-        title: `Mendaftar kursus`,
-        courseName: en.course.title,
-        date: en.enrolledAt,
-        status: "Terdaftar",
+        title: `Enrolled: ${enr.course.title}`,
+        courseName: enr.course.title,
+        date: enr.enrolledAt,
+        status: enr.status,
       });
     }
 
-    // Sort by date descending
+    // Sort by date descending and paginate
     activities.sort((a, b) => b.date.getTime() - a.date.getTime());
 
-    // Paginate
     const total = activities.length;
     const totalPages = Math.ceil(total / limit);
-    const paginatedActivities = activities.slice(
-      (page - 1) * limit,
-      page * limit,
-    );
+    const start = (page - 1) * limit;
+    const paginatedActivities = activities.slice(start, start + limit);
 
     res.status(200).json({
       success: true,
@@ -320,7 +250,7 @@ export const getDashboardCertificates = asyncHandler(
         course: {
           select: {
             title: true,
-            description: true,
+            thumbnail: true,
           },
         },
       },
@@ -346,36 +276,30 @@ export const getDashboardRecommendations = asyncHandler(
     // Get enrolled course IDs and their categories
     const enrollments = await prisma.enrollment.findMany({
       where: { userId },
-      include: {
-        course: { select: { id: true, category: true } },
+      select: {
+        courseId: true,
+        course: { select: { category: true } },
       },
     });
 
-    const enrolledCourseIds = enrollments.map((e) => e.course.id);
-    const enrolledCategories = [
-      ...new Set(enrollments.map((e) => e.course.category)),
-    ];
+    const enrolledCourseIds = enrollments.map((e) => e.courseId);
+    const enrolledCategories = enrollments.map((e) => e.course.category);
 
-    // Get recommended courses: published, not enrolled
+    // Get published courses not yet enrolled, excluding soft-deleted
     const recommendations = await prisma.course.findMany({
       where: {
         isPublished: true,
-        id: { notIn: enrolledCourseIds },
+        deletedAt: null,
+        id: { notIn: enrolledCourseIds.length > 0 ? enrolledCourseIds : [] },
       },
-      select: {
-        id: true,
-        title: true,
-        description: true,
-        category: true,
-        level: true,
-        thumbnail: true,
-        rating: true,
+      include: {
         creator: { select: { name: true } },
+        _count: { select: { modules: true, enrollments: true } },
       },
       take: 8,
     });
 
-    // Sort: prioritize same categories as enrolled courses
+    // Sort: same category first
     const sorted = recommendations.sort((a, b) => {
       const aMatch = enrolledCategories.includes(a.category) ? 0 : 1;
       const bMatch = enrolledCategories.includes(b.category) ? 0 : 1;

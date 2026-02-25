@@ -390,9 +390,21 @@ export default function StudentDashboard() {
                       <p className="truncate text-sm font-medium">
                         {cert.course.title}
                       </p>
-                      <p className="text-muted-foreground text-xs">
-                        {cert.serialNumber}
-                      </p>
+                      <div className="mt-1 flex items-center gap-2">
+                        <span className="text-muted-foreground text-xs">
+                          {cert.serialNumber}
+                        </span>
+                        {cert.grade && (
+                          <Badge variant="outline" className="text-xs">
+                            Grade {cert.grade}
+                          </Badge>
+                        )}
+                        {cert.finalScore != null && (
+                          <span className="text-muted-foreground text-xs">
+                            {cert.finalScore.toFixed(1)}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <span className="text-muted-foreground shrink-0 text-xs">
                       {new Date(cert.issuedAt).toLocaleDateString("id-ID")}

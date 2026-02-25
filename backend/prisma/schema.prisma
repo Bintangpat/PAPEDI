@@ -49,8 +49,28 @@ enum SubmissionStatus {
   REVISI
 }
 
+// ENUM BARU
+enum EnrollmentStatus {
+  ACTIVE
+  COMPLETED
+  DROPPED
+  FAILED
+}
+
+enum ModuleStatus {
+  LOCKED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum CertificateStatus {
+  ELIGIBLE
+  ISSUED
+  REVOKED
+}
+
 // ==========================================
-// MODELS
+// MODELS (EXISTING + IMPROVED)
 // ==========================================
 
 model User {
@@ -65,17 +85,19 @@ model User {
   isVerified   Boolean  @default(false) @map("is_verified")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
 
   // Relations
-  enrollments        Enrollment[]
-  quizAttempts       QuizAttempt[]
-  projectSubmissions ProjectSubmission[] @relation("StudentSubmissions")
-  reviewedProjects   ProjectSubmission[] @relation("ReviewerSubmissions")
-  certificates       Certificate[]
-  createdCourses     Course[]            @relation("CourseCreator")
-  activatedEnrollments Enrollment[]      @relation("ActivatedBy")
-  refreshTokens      RefreshToken[]
-  otps               Otp[]
+  enrollments          Enrollment[]
+  quizAttempts         QuizAttempt[]
+  projectSubmissions   ProjectSubmission[] @relation("StudentSubmissions")
+  reviewedProjects     ProjectSubmission[] @relation("ReviewerSubmissions")
+  certificates         Certificate[]
+  createdCourses       Course[]            @relation("CourseCreator")
+  activatedEnrollments Enrollment[]        @relation("ActivatedBy")
+  refreshTokens        RefreshToken[]
+  otps                 Otp[]
+  surveyResponse       SurveyResponse?
 
   @@map("users")
 }
@@ -111,56 +133,77 @@ model RefreshToken {
 }
 
 model Course {
-  id          String         @id @default(uuid())
-  title       String
-  description String
-  category    CourseCategory
-  level       CourseLevel    @default(BEGINNER)
-  thumbnail   String?
-  rating      Float          @default(0)
-  isPublished Boolean        @default(false) @map("is_published")
-  createdBy   String         @map("created_by")
-  createdAt   DateTime       @default(now()) @map("created_at")
-  updatedAt   DateTime       @updatedAt @map("updated_at")
+  id           String         @id @default(uuid())
+  title        String
+  description  String
+  category     CourseCategory
+  level        CourseLevel    @default(BEGINNER)
+  thumbnail    String?
+  rating       Float          @default(0)
+  passingScore Float          @default(80) @map("passing_score")
+  isPublished  Boolean        @default(false) @map("is_published")
+  createdBy    String         @map("created_by")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+  deletedAt    DateTime?      @map("deleted_at")
 
   // Relations
-  creator     User           @relation("CourseCreator", fields: [createdBy], references: [id])
-  modules     Module[]
-  enrollments Enrollment[]
-  submissions ProjectSubmission[]
-  certificates Certificate[]
+  creator             User                 @relation("CourseCreator", fields: [createdBy], references: [id])
+  modules             Module[]
+  enrollments         Enrollment[]
+  submissions         ProjectSubmission[]
+  certificates        Certificate[]
+  batches             Batch[]
+  certificateTemplate CertificateTemplate?
 
   @@map("courses")
+}
+
+model Batch {
+  id          String    @id @default(uuid())
+  courseId    String    @map("course_id")
+  name        String
+  startDate   DateTime? @map("start_date")
+  endDate     DateTime? @map("end_date")
+  maxStudents Int?      @map("max_students")
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  course      Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  enrollments Enrollment[]
+
+  @@map("batches")
 }
 
 model Module {
   id        String   @id @default(uuid())
   title     String
   order     Int
-  courseId   String   @map("course_id")
+  courseId  String   @map("course_id")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relations
-  course  Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  lesson  Lesson[]
-  quiz    Quiz?
-  project Project?
+  course   Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessons  Lesson[]
+  quiz     Quiz?
+  project  Project?
+  progress ModuleProgress[]
 
   @@unique([courseId, order])
   @@map("modules")
 }
 
 model Lesson {
-  id       String     @id @default(uuid())
-  title    String
-  type     LessonType @default(TEXT)
-  content  String?
-  videoUrl String?    @map("video_url")
-  order    Int
-  moduleId String     @map("module_id")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
+  id        String     @id @default(uuid())
+  title     String
+  type      LessonType @default(TEXT)
+  content   String?
+  videoUrl  String?    @map("video_url")
+  order     Int
+  moduleId  String     @map("module_id")
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
 
   // Relations
   module Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
@@ -188,8 +231,8 @@ model QuizQuestion {
   id            String   @id @default(uuid())
   quizId        String   @map("quiz_id")
   question      String
-  options       String[] // Array of options
-  correctAnswer Int      @map("correct_answer") // Index of correct option
+  options       String[]
+  correctAnswer Int      @map("correct_answer")
   order         Int
 
   // Relations
@@ -200,13 +243,14 @@ model QuizQuestion {
 }
 
 model QuizAttempt {
-  id          String   @id @default(uuid())
-  userId      String   @map("user_id")
-  quizId      String   @map("quiz_id")
-  answers     Int[]    // Array of selected option indices
-  score       Float
-  passed      Boolean
-  attemptedAt DateTime @default(now()) @map("attempted_at")
+  id            String   @id @default(uuid())
+  userId        String   @map("user_id")
+  quizId        String   @map("quiz_id")
+  answers       Int[]
+  score         Float
+  passed        Boolean
+  attemptNumber Int?     @map("attempt_number")
+  attemptedAt   DateTime @default(now()) @map("attempted_at")
 
   // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -216,32 +260,35 @@ model QuizAttempt {
 }
 
 model Project {
-  id          String   @id @default(uuid())
-  moduleId    String   @unique @map("module_id")
-  title       String
-  description String
-  deadline    DateTime?
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id           String    @id @default(uuid())
+  moduleId     String    @unique @map("module_id")
+  title        String
+  description  String
+  deadline     DateTime?
+  passingScore Float     @default(80) @map("passing_score")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
 
-  module      Module   @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  module      Module              @relation(fields: [moduleId], references: [id], onDelete: Cascade)
   submissions ProjectSubmission[]
   
   @@map("projects")
 }
 
 model ProjectSubmission {
-  id          String           @id @default(uuid())
-  userId      String           @map("user_id")
-  courseId    String           @map("course_id")
-  projectId   String?          @map("project_id")
-  githubUrl   String?          @map("github_url")
-  demoUrl     String?          @map("demo_url")
-  status      SubmissionStatus @default(PENDING)
-  feedback    String?
-  reviewedBy  String?          @map("reviewed_by")
-  submittedAt DateTime         @default(now()) @map("submitted_at")
-  updatedAt   DateTime         @updatedAt @map("updated_at")
+  id         String           @id @default(uuid())
+  userId     String           @map("user_id")
+  courseId   String           @map("course_id")
+  projectId  String?          @map("project_id")
+  githubUrl  String?          @map("github_url")
+  demoUrl    String?          @map("demo_url")
+  status     SubmissionStatus @default(PENDING)
+  score      Float?
+  isPassed   Boolean?         @map("is_passed")
+  feedback   String?
+  reviewedBy String?          @map("reviewed_by")
+  submittedAt DateTime        @default(now()) @map("submitted_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
 
   // Relations
   student  User     @relation("StudentSubmissions", fields: [userId], references: [id], onDelete: Cascade)
@@ -253,36 +300,99 @@ model ProjectSubmission {
 }
 
 model Enrollment {
-  id            String   @id @default(uuid())
-  userId        String   @map("user_id")
-  courseId       String   @map("course_id")
-  activatedById String?  @map("activated_by_id")
-  enrolledAt    DateTime @default(now()) @map("enrolled_at")
+  id            String           @id @default(uuid())
+  userId        String           @map("user_id")
+  courseId      String           @map("course_id")
+  batchId       String?          @map("batch_id")
+  activatedById String?          @map("activated_by_id")
+  status        EnrollmentStatus @default(ACTIVE)
+  finalScore    Float?           @map("final_score")
+  isEligibleCert Boolean         @default(false) @map("is_eligible_cert")
+  enrolledAt    DateTime         @default(now()) @map("enrolled_at")
+  updatedAt     DateTime         @updatedAt @default(now()) @map("updated_at")
 
-  // Progress tracking: store completed lesson & quiz IDs as arrays
+  // Progress tracking: store completed lesson & quiz IDs as arrays (legacy, kept for backward compat)
   completedLessons String[] @default([]) @map("completed_lessons")
   completedQuizzes String[] @default([]) @map("completed_quizzes")
 
   // Relations
-  user        User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  course      Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  activatedBy User?   @relation("ActivatedBy", fields: [activatedById], references: [id])
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course         Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  batch          Batch?           @relation(fields: [batchId], references: [id])
+  activatedBy    User?            @relation("ActivatedBy", fields: [activatedById], references: [id])
+  moduleProgress ModuleProgress[]
+  certificates   Certificate[]
 
   @@unique([userId, courseId])
   @@map("enrollments")
 }
 
+model ModuleProgress {
+  id               String       @id @default(uuid())
+  enrollmentId     String       @map("enrollment_id")
+  moduleId         String       @map("module_id")
+  status           ModuleStatus @default(LOCKED)
+  averageQuizScore Float?       @map("average_quiz_score")
+  isPassed         Boolean      @default(false) @map("is_passed")
+
+  enrollment Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  module     Module     @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@unique([enrollmentId, moduleId])
+  @@map("module_progress")
+}
+
 model Certificate {
-  id           String   @id @default(uuid())
-  userId       String   @map("user_id")
-  courseId      String   @map("course_id")
-  serialNumber String   @unique @map("serial_number")
-  issuedAt     DateTime @default(now()) @map("issued_at")
+  id                String            @id @default(uuid())
+  userId            String            @map("user_id")
+  courseId          String            @map("course_id")
+  enrollmentId      String?           @map("enrollment_id")
+  serialNumber      String            @unique @map("serial_number")
+  finalScore        Float?            @map("final_score")
+  grade             String?
+  status            CertificateStatus @default(ISSUED)
+  verificationToken String?           @unique @map("verification_token")
+  pdfUrl            String?           @map("pdf_url")
+  issuedAt          DateTime          @default(now()) @map("issued_at")
+  revokedAt         DateTime?         @map("revoked_at")
 
   // Relations
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course     Course      @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  enrollment Enrollment? @relation(fields: [enrollmentId], references: [id])
 
   @@unique([userId, courseId])
   @@map("certificates")
+}
+
+model CertificateTemplate {
+  id         String   @id @default(uuid())
+  courseId   String   @unique @map("course_id")
+  name       String
+  bgImageUrl String?  @map("bg_image_url")
+  textBlocks Json     @default("[]") @map("text_blocks")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@map("certificate_templates")
+}
+
+model SurveyResponse {
+  id                  String         @id @default(uuid())
+  userId              String         @unique @map("user_id")
+  q1Goal              String         @map("q1_goal")
+  q2Experience        String         @map("q2_experience")
+  q3Interest          CourseCategory @map("q3_interest")
+  q4LearningStyle     String         @map("q4_learning_style")
+  q5TimeCommitment    String         @map("q5_time_commitment")
+  recommendedCategory CourseCategory @map("recommended_category")
+  recommendedLevel    CourseLevel    @map("recommended_level")
+  scoreBreakdown      Json?          @map("score_breakdown")
+  createdAt           DateTime       @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("survey_responses")
 }

@@ -13,6 +13,8 @@ export interface CourseProgress {
   totalModules: number;
   completedModules: number;
   enrolledAt: string;
+  status?: string;
+  finalScore?: number | null;
 }
 
 export interface ActivityItem {
@@ -21,6 +23,7 @@ export interface ActivityItem {
   courseName: string;
   date: string;
   status: string;
+  score?: number | null;
 }
 
 export interface ActivityResponse {
@@ -38,6 +41,8 @@ export interface DashboardCertificate {
   userId: string;
   courseId: string;
   serialNumber: string;
+  finalScore?: number | null;
+  grade?: string | null;
   issuedAt: string;
   course: {
     title: string;

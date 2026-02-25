@@ -19,6 +19,8 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { CourseSettingsForm } from "./_components/course-settings-form";
 import { ModulesList } from "./_components/modules-list";
+import { QuizList } from "./_components/quiz-list";
+import { ProjectList } from "./_components/project-list";
 
 export default function EditCoursePage() {
   const params = useParams();
@@ -89,11 +91,41 @@ export default function EditCoursePage() {
       >
         <TabsList>
           <TabsTrigger value="curriculum">Kurikulum</TabsTrigger>
+          <TabsTrigger value="quiz">Quiz</TabsTrigger>
+          <TabsTrigger value="project">Project</TabsTrigger>
           <TabsTrigger value="settings">Pengaturan</TabsTrigger>
         </TabsList>
 
         <TabsContent value="curriculum" className="space-y-6">
           <ModulesList course={course} />
+        </TabsContent>
+
+        <TabsContent value="quiz">
+          <Card>
+            <CardHeader>
+              <CardTitle>Daftar Quiz</CardTitle>
+              <CardDescription>
+                Kelola semua quiz yang ada di setiap modul kursus ini.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <QuizList course={course} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="project">
+          <Card>
+            <CardHeader>
+              <CardTitle>Daftar Project</CardTitle>
+              <CardDescription>
+                Kelola semua project akhir modul dalam kursus ini.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ProjectList course={course} />
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="settings">

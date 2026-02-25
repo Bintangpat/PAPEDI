@@ -46,6 +46,7 @@ export default function MentorSubmissionsPage() {
               <TableHead>Siswa</TableHead>
               <TableHead>Kursus</TableHead>
               <TableHead>Tanggal Submit</TableHead>
+              <TableHead>Skor</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Aksi</TableHead>
             </TableRow>
@@ -53,7 +54,7 @@ export default function MentorSubmissionsPage() {
           <TableBody>
             {submissions?.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="h-24 text-center">
+                <TableCell colSpan={6} className="h-24 text-center">
                   Tidak ada submission pending.
                 </TableCell>
               </TableRow>
@@ -75,16 +76,25 @@ export default function MentorSubmissionsPage() {
                       : "-"}
                   </TableCell>
                   <TableCell>
+                    {sub.score !== null && sub.score !== undefined
+                      ? sub.score
+                      : "-"}
+                  </TableCell>
+                  <TableCell>
                     <Badge
                       variant={
                         sub.status === "PENDING"
                           ? "secondary"
-                          : sub.status === "LULUS"
-                            ? "default" // "success" if defined
+                          : sub.isPassed
+                            ? "default"
                             : "destructive"
                       }
                     >
-                      {sub.status}
+                      {sub.status === "PENDING"
+                        ? "Pending"
+                        : sub.isPassed
+                          ? "Lulus"
+                          : "Revisi"}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">

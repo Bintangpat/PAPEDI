@@ -223,7 +223,7 @@ export const getCourseById = asyncHandler(
         modules: {
           orderBy: { order: "asc" },
           include: {
-            lesson: {
+            lessons: {
               orderBy: { order: "asc" },
               select: {
                 id: true,

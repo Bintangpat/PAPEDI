@@ -33,6 +33,10 @@ import { cn } from "@/lib/utils";
 const formSchema = z.object({
   title: z.string().min(3, "Judul minimal 3 karakter"),
   description: z.string().min(10, "Deskripsi minimal 10 karakter"),
+  passingScore: z
+    .number()
+    .min(0, "Skor minimal 0")
+    .max(100, "Skor maksimal 100"),
   deadline: z.date().optional(),
 });
 
@@ -56,6 +60,7 @@ export function ProjectForm({
     defaultValues: {
       title: project?.title || "",
       description: project?.description || "",
+      passingScore: project?.passingScore ?? 80,
       deadline: project?.deadline ? new Date(project.deadline) : undefined,
     },
   });
@@ -66,6 +71,7 @@ export function ProjectForm({
         moduleId,
         title: values.title,
         description: values.description,
+        passingScore: values.passingScore,
         deadline: values.deadline,
       }),
     onSuccess: () => {
@@ -83,6 +89,7 @@ export function ProjectForm({
       projectService.updateProject(project!.id, {
         title: values.title,
         description: values.description,
+        passingScore: values.passingScore,
         deadline: values.deadline,
       }),
     onSuccess: () => {
@@ -135,6 +142,34 @@ export function ProjectForm({
                   {...field}
                 />
               </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="passingScore"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Passing Score</FormLabel>
+              <FormControl>
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  placeholder="80"
+                  value={field.value}
+                  onChange={(e) =>
+                    field.onChange(
+                      e.target.value === "" ? 0 : Number(e.target.value),
+                    )
+                  }
+                />
+              </FormControl>
+              <FormDescription>
+                Skor minimum agar siswa dinyatakan lulus (0-100).
+              </FormDescription>
               <FormMessage />
             </FormItem>
           )}

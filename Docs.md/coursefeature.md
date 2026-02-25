@@ -1,7 +1,3 @@
-Here is the English translation of your PRD, refined for professional enterprise standards.
-
----
-
 # PRD — COMPETENCY-BASED MODULAR TRAINING SYSTEM
 
 Here is the **enterprise-ready PRD for the Training / Bootcamp LMS system**, aligned with our restructured schema design (utilizing `LessonProgress`, `ModuleProgress`, `CourseProgress`, weighted scoring, and a grading system).

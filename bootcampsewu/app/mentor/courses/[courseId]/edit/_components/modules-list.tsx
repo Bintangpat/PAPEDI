@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Course } from "@/types/course";
 import { Module, Lesson } from "@/types/module";
 import { Project } from "@/types/project";
@@ -276,49 +277,129 @@ export function ModulesList({ course }: ModulesListProps) {
               </div>
               <AccordionContent className="pr-4 pb-4 pl-10">
                 <div className="space-y-2">
-                  {module.lessons && module.lessons.length > 0 ? (
-                    module.lessons.map((lesson) => (
-                      <div
-                        key={lesson.id}
-                        className="flex items-center justify-between rounded-md border bg-slate-50 p-2 dark:bg-slate-900"
-                      >
-                        <div className="flex items-center gap-3">
-                          {lesson.type === "VIDEO" ? (
-                            <Video className="h-4 w-4 text-blue-500" />
-                          ) : (
-                            <FileText className="h-4 w-4 text-green-500" />
-                          )}
-                          <span className="text-sm">{lesson.title}</span>
+                  {module.lessons && module.lessons.length > 0
+                    ? module.lessons.map((lesson) => (
+                        <div
+                          key={lesson.id}
+                          className="group flex items-center justify-between rounded-md border bg-slate-50 p-2 transition-colors hover:bg-white dark:bg-slate-900"
+                        >
+                          <div className="flex items-center gap-3">
+                            {lesson.type === "VIDEO" ? (
+                              <Video className="h-4 w-4 text-blue-500" />
+                            ) : (
+                              <FileText className="h-4 w-4 text-green-500" />
+                            )}
+                            <span className="text-sm">{lesson.title}</span>
+                            <Badge variant="outline" className="text-[10px]">
+                              Lesson
+                            </Badge>
+                          </div>
+                          <div className="flex items-center opacity-0 transition-opacity group-hover:opacity-100">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0"
+                              onClick={() => openEditLesson(module.id, lesson)}
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0 text-red-500 hover:text-red-600"
+                              onClick={() => {
+                                if (confirm("Hapus materi ini?")) {
+                                  deleteLessonMutation.mutate(lesson.id);
+                                }
+                              }}
+                            >
+                              <Trash className="h-3 w-3" />
+                            </Button>
+                          </div>
                         </div>
-                        <div className="flex items-center">
+                      ))
+                    : null}
+
+                  {/* Inline Quiz */}
+                  {module.quiz && (
+                    <div className="group flex items-center justify-between rounded-md border border-emerald-100 bg-emerald-50/30 p-2 transition-colors hover:bg-emerald-50 dark:border-emerald-900/50 dark:bg-emerald-900/10">
+                      <div className="flex items-center gap-3">
+                        <FileText className="h-4 w-4 text-emerald-500" />
+                        <span className="text-sm font-medium">
+                          Quiz: Modul ini
+                        </span>
+                        <Badge
+                          variant="default"
+                          className="bg-emerald-500 text-[10px] hover:bg-emerald-600"
+                        >
+                          Quiz
+                        </Badge>
+                      </div>
+                      <div className="flex items-center opacity-0 transition-opacity group-hover:opacity-100">
+                        <Link href={`/mentor/modules/${module.id}/quiz`}>
                           <Button
                             variant="ghost"
                             size="sm"
                             className="h-8 w-8 p-0"
-                            onClick={() => openEditLesson(module.id, lesson)}
                           >
                             <Pencil className="h-3 w-3" />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 p-0 text-red-500 hover:text-red-600"
-                            onClick={() => {
-                              if (confirm("Hapus materi ini?")) {
-                                deleteLessonMutation.mutate(lesson.id);
-                              }
-                            }}
-                          >
-                            <Trash className="h-3 w-3" />
-                          </Button>
-                        </div>
+                        </Link>
+                        {/* Quiz delete functionality could be added if service exists, 
+                            for now we just allow editing. */}
                       </div>
-                    ))
-                  ) : (
-                    <div className="text-muted-foreground py-2 text-center text-sm">
-                      Belum ada materi pelajaran.
                     </div>
                   )}
+
+                  {/* Inline Project */}
+                  {module.project && (
+                    <div className="group flex items-center justify-between rounded-md border border-indigo-100 bg-indigo-50/30 p-2 transition-colors hover:bg-indigo-50 dark:border-indigo-900/50 dark:bg-indigo-900/10">
+                      <div className="flex items-center gap-3">
+                        <Briefcase className="h-4 w-4 text-indigo-500" />
+                        <span className="text-sm font-medium">
+                          Project: {module.project.title}
+                        </span>
+                        <Badge
+                          variant="default"
+                          className="bg-indigo-500 text-[10px] hover:bg-indigo-600"
+                        >
+                          Project
+                        </Badge>
+                      </div>
+                      <div className="flex items-center opacity-0 transition-opacity group-hover:opacity-100">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0"
+                          onClick={() =>
+                            openProjectManager(module.id, module.project)
+                          }
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 text-red-500 hover:text-red-600"
+                          onClick={() => {
+                            if (confirm("Hapus project ini?")) {
+                              deleteProjectMutation.mutate(module.project!.id);
+                            }
+                          }}
+                        >
+                          <Trash className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {(!module.lessons || module.lessons.length === 0) &&
+                    !module.quiz &&
+                    !module.project && (
+                      <div className="text-muted-foreground py-2 text-center text-sm">
+                        Belum ada materi, quiz, atau project.
+                      </div>
+                    )}
                   <Button
                     variant="outline"
                     size="sm"

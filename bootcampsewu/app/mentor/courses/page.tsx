@@ -131,7 +131,7 @@ export default function MentorCoursesPage() {
                     </Badge>
                     <CardTitle className="line-clamp-2 text-lg leading-tight">
                       <Link
-                        href={`/mentor/courses/${course.id}`}
+                        href={`/mentor/courses/${course.id}/edit`}
                         className="hover:underline"
                       >
                         {course.title}

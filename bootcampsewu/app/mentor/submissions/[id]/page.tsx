@@ -1,12 +1,12 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useParams, useRouter } from "next/navigation";
-import api from "@/lib/axios";
+import { useParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -14,66 +14,60 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { ArrowLeft, ExternalLink, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
+import {
+  useSubmissionDetail,
+  useGradeSubmission,
+} from "@/hooks/use-submission";
 
 export default function GradeSubmissionPage() {
   const { id } = useParams();
-  const router = useRouter();
-  const queryClient = useQueryClient();
+  const submissionId = id as string;
 
-  const [grade, setGrade] = useState<string>("LULUS");
+  const { data: submission, isLoading } = useSubmissionDetail(submissionId);
+  const gradeMutation = useGradeSubmission(submissionId);
+
+  const [score, setScore] = useState<number | "">("");
   const [feedback, setFeedback] = useState<string>("");
+  const [status, setStatus] = useState<"REVISI" | "LULUS" | "">("");
 
-  // Fetch specific submission details if needed,
-  // currently fetching generic list and filtering or better fetch detail endpoint
-  // For now, let's reuse the logic or create a specific endpoint if strictly needed.
-  // Ideally, Backend should have GET /mentor/submissions/:id
-  // But strictly strictly we can reuse list or create new.
-  // Let's assume we can fetch list and find, OR add Detail Endpoint.
-  // Plan: Add GET /api/v1/mentor/submissions/:id to Controller?
-  // Or just Filter client side from list if cached?
-  // Use Client side filter for speed if list is small, but better fetch fresh.
-  // Let's TRY to fetch the same 'my' endpoint but for specific ID? No.
-  // I will add a `getSubmissionById` to controller or just blindly call it since GET /submissions returns list.
-  // Wait, I implemented `getSubmissions` list.
-  // Let's implement a quick client-side fetch for now using existing, or better yet, assume I add getById.
-  // Actually, I'll just browse the list because I didn't add getById in plan.
-  // Refactoring plan: I will add `getSubmissionById` to backend now.
+  if (isLoading) {
+    return (
+      <div className="flex h-[50vh] items-center justify-center">
+        <Loader2 className="text-primary h-8 w-8 animate-spin" />
+      </div>
+    );
+  }
 
-  const { data: submission, isLoading } = useQuery({
-    queryKey: ["mentor-submission-detail", id],
-    queryFn: async () => {
-      // HACK: Fetch all and find (Not ideal for production but works for Sprint)
-      // OR better: Create the endpoint.
-      // Let's try to just fetch the list and find it.
-      const res = await api.get("/mentor/submissions");
-      return res.data.data.find((s: any) => s.id === id);
-    },
-    enabled: !!id,
-  });
+  if (!submission) {
+    return <div className="py-20 text-center">Submission tidak ditemukan</div>;
+  }
 
-  const gradeMutation = useMutation({
-    mutationFn: async () => {
-      await api.post(`/mentor/submissions/${id}/grade`, {
-        status: grade,
-        feedback,
-      });
-    },
-    onSuccess: () => {
-      toast.success("Penilaian berhasil disimpan");
-      queryClient.invalidateQueries({ queryKey: ["mentor-submissions"] });
-      router.push("/mentor/submissions");
-    },
-    onError: (err: any) => {
-      toast.error(err.response?.data?.message || "Gagal menilai");
-    },
-  });
+  const passingScore = submission.project?.passingScore ?? 80;
+  const isScoreValid = score !== "" && score >= 0 && score <= 100;
+  const wouldPass = isScoreValid && Number(score) >= passingScore;
 
-  if (isLoading) return <div>Loading...</div>;
-  if (!submission) return <div>Submission not found</div>;
+  const isFormValid = !!status && !!feedback.trim() && isScoreValid;
+
+  const handleSubmit = () => {
+    if (!status) {
+      toast.error("Status penilaian wajib dipilih");
+      return;
+    }
+    if (!feedback.trim()) {
+      toast.error("Feedback wajib diisi");
+      return;
+    }
+
+    gradeMutation.mutate({
+      status,
+      feedback: feedback.trim(),
+      score: score !== "" ? Number(score) : null,
+    });
+  };
 
   return (
     <div className="max-w-4xl space-y-8">
@@ -102,6 +96,25 @@ export default function GradeSubmissionPage() {
                 <Label className="text-muted-foreground">Kursus</Label>
                 <p className="font-medium">{submission.course.title}</p>
               </div>
+              <div>
+                <Label className="text-muted-foreground">Passing Score</Label>
+                <p className="font-medium">{passingScore}</p>
+              </div>
+              {submission.score !== null && submission.score !== undefined && (
+                <div>
+                  <Label className="text-muted-foreground">
+                    Skor Sebelumnya
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium">{submission.score}</p>
+                    <Badge
+                      variant={submission.isPassed ? "default" : "destructive"}
+                    >
+                      {submission.isPassed ? "Lulus" : "Belum Lulus"}
+                    </Badge>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -153,22 +166,52 @@ export default function GradeSubmissionPage() {
               <CardTitle>Form Penilaian</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* Status Selection — THIS WAS MISSING and caused the bug */}
               <div className="space-y-2">
-                <Label>Status Kelulusan</Label>
-                <Select value={grade} onValueChange={setGrade}>
-                  <SelectTrigger>
-                    <SelectValue />
+                <Label htmlFor="status">Status Penilaian *</Label>
+                <Select
+                  value={status}
+                  onValueChange={(val) => setStatus(val as "REVISI" | "LULUS")}
+                >
+                  <SelectTrigger id="status">
+                    <SelectValue placeholder="Pilih status penilaian" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="LULUS">LULUS</SelectItem>
-                    <SelectItem value="REVISI">REVISI</SelectItem>
+                    <SelectItem value="LULUS">✅ Lulus</SelectItem>
+                    <SelectItem value="REVISI">🔄 Revisi</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="space-y-2">
-                <Label>Feedback Mentor</Label>
+                <Label htmlFor="score">Skor (0 - 100)</Label>
+                <Input
+                  id="score"
+                  type="number"
+                  min={0}
+                  max={100}
+                  placeholder="Masukkan skor (contoh: 85)"
+                  value={score}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setScore(val === "" ? "" : Number(val));
+                  }}
+                />
+                {isScoreValid && (
+                  <p
+                    className={`text-sm font-medium ${wouldPass ? "text-emerald-600" : "text-red-600"}`}
+                  >
+                    {wouldPass
+                      ? `✓ Lulus (≥ ${passingScore})`
+                      : `✗ Belum Lulus (< ${passingScore})`}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="feedback">Feedback Mentor *</Label>
                 <Textarea
+                  id="feedback"
                   placeholder="Berikan masukan kepada siswa..."
                   className="min-h-[150px]"
                   value={feedback}
@@ -179,10 +222,17 @@ export default function GradeSubmissionPage() {
               <div className="pt-4">
                 <Button
                   className="w-full"
-                  onClick={() => gradeMutation.mutate()}
-                  disabled={gradeMutation.isPending || !feedback}
+                  onClick={handleSubmit}
+                  disabled={gradeMutation.isPending || !isFormValid}
                 >
-                  {gradeMutation.isPending ? "Menyimpan..." : "Kirim Penilaian"}
+                  {gradeMutation.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Menyimpan...
+                    </>
+                  ) : (
+                    "Kirim Penilaian"
+                  )}
                 </Button>
               </div>
             </CardContent>

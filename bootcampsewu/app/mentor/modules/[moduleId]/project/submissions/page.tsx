@@ -4,22 +4,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import { projectService, ProjectSubmission } from "@/services/project.service";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "@/components/ui/card";
-import {
-  Loader2,
-  ExternalLink,
-  CheckCircle,
-  XCircle,
-  ArrowLeft,
-  MoreHorizontal,
-  FileText,
-} from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Loader2, ExternalLink, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import {
   Table,
@@ -36,27 +22,14 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import Link from "next/link";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 export default function ProjectSubmissionsPage() {
   const params = useParams();
@@ -67,7 +40,7 @@ export default function ProjectSubmissionsPage() {
 
   const [selectedSubmission, setSelectedSubmission] =
     useState<ProjectSubmission | null>(null);
-  const [gradeStatus, setGradeStatus] = useState<"LULUS" | "REVISI">("LULUS");
+  const [score, setScore] = useState<number | "">("");
   const [feedback, setFeedback] = useState("");
   const [isGradeDialogOpen, setIsGradeDialogOpen] = useState(false);
 
@@ -79,6 +52,7 @@ export default function ProjectSubmissionsPage() {
   });
 
   const projectId = project?.id;
+  const passingScore = project?.passingScore ?? 80;
 
   // 2. Fetch Submissions
   const { data: submissions, isLoading: isSubmissionsLoading } = useQuery({
@@ -88,7 +62,7 @@ export default function ProjectSubmissionsPage() {
   });
 
   const gradeMutation = useMutation({
-    mutationFn: (data: { status: "LULUS" | "REVISI"; feedback: string }) =>
+    mutationFn: (data: { score: number; feedback: string }) =>
       projectService.gradeProject(selectedSubmission!.id, data),
     onSuccess: () => {
       toast.success("Submission berhasil dinilai");
@@ -96,6 +70,7 @@ export default function ProjectSubmissionsPage() {
       setIsGradeDialogOpen(false);
       setSelectedSubmission(null);
       setFeedback("");
+      setScore("");
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.message || "Gagal menilai submission");
@@ -104,18 +79,16 @@ export default function ProjectSubmissionsPage() {
 
   const handleGradeClick = (submission: ProjectSubmission) => {
     setSelectedSubmission(submission);
-    setGradeStatus(
-      submission.status === "PENDING"
-        ? "LULUS"
-        : (submission.status as "LULUS" | "REVISI"),
-    );
+    setScore(submission.score ?? "");
     setFeedback(submission.feedback || "");
     setIsGradeDialogOpen(true);
   };
 
+  const isScoreValid = score !== "" && score >= 0 && score <= 100;
+
   const handleSubmitGrade = () => {
-    if (!selectedSubmission) return;
-    gradeMutation.mutate({ status: gradeStatus, feedback });
+    if (!selectedSubmission || !isScoreValid) return;
+    gradeMutation.mutate({ score: Number(score), feedback });
   };
 
   if (isProjectLoading || (projectId && isSubmissionsLoading)) {
@@ -159,7 +132,7 @@ export default function ProjectSubmissionsPage() {
         <div>
           <h1 className="text-2xl font-bold">Submissions: {project.title}</h1>
           <p className="text-muted-foreground">
-            Kelola dan nilai tugas akhir siswa
+            Kelola dan nilai tugas akhir siswa (Passing Score: {passingScore})
           </p>
         </div>
       </div>
@@ -179,6 +152,7 @@ export default function ProjectSubmissionsPage() {
                 <TableRow>
                   <TableHead>Siswa</TableHead>
                   <TableHead>Tanggal Submit</TableHead>
+                  <TableHead>Skor</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Repository</TableHead>
                   <TableHead className="text-right">Action</TableHead>
@@ -213,22 +187,25 @@ export default function ProjectSubmissionsPage() {
                         minute: "2-digit",
                       })}
                     </TableCell>
+                    <TableCell>{sub.score != null ? sub.score : "-"}</TableCell>
                     <TableCell>
                       <Badge
                         variant={
-                          sub.status === "LULUS"
-                            ? "default"
-                            : sub.status === "REVISI"
-                              ? "destructive"
-                              : "secondary"
+                          sub.status === "PENDING"
+                            ? "secondary"
+                            : sub.isPassed
+                              ? "default"
+                              : "destructive"
                         }
                         className={
-                          sub.status === "LULUS"
-                            ? "bg-green-500 hover:bg-green-600"
-                            : ""
+                          sub.isPassed ? "bg-green-500 hover:bg-green-600" : ""
                         }
                       >
-                        {sub.status}
+                        {sub.status === "PENDING"
+                          ? "Pending"
+                          : sub.isPassed
+                            ? "Lulus"
+                            : "Revisi"}
                       </Badge>
                     </TableCell>
                     <TableCell>
@@ -279,27 +256,35 @@ export default function ProjectSubmissionsPage() {
           <DialogHeader>
             <DialogTitle>Nilai Submission</DialogTitle>
             <DialogDescription>
-              Berikan status kelulusan dan feedback untuk siswa.
+              Berikan skor (0-100) dan feedback untuk siswa. Passing score:{" "}
+              {passingScore}
             </DialogDescription>
           </DialogHeader>
           {selectedSubmission && (
             <div className="grid gap-4 py-4">
               <div className="flex flex-col gap-2">
-                <Label>Status</Label>
-                <Select
-                  value={gradeStatus}
-                  onValueChange={(val: "LULUS" | "REVISI") =>
-                    setGradeStatus(val)
+                <Label>Skor (0 - 100)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  placeholder="Masukkan skor"
+                  value={score}
+                  onChange={(e) =>
+                    setScore(
+                      e.target.value === "" ? "" : Number(e.target.value),
+                    )
                   }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="LULUS">LULUS</SelectItem>
-                    <SelectItem value="REVISI">REVISI</SelectItem>
-                  </SelectContent>
-                </Select>
+                />
+                {isScoreValid && (
+                  <p
+                    className={`text-sm font-medium ${Number(score) >= passingScore ? "text-emerald-600" : "text-red-600"}`}
+                  >
+                    {Number(score) >= passingScore
+                      ? `✓ Lulus (≥ ${passingScore})`
+                      : `✗ Belum Lulus (< ${passingScore})`}
+                  </p>
+                )}
               </div>
               <div className="flex flex-col gap-2">
                 <Label>Feedback</Label>
@@ -321,7 +306,7 @@ export default function ProjectSubmissionsPage() {
             </Button>
             <Button
               onClick={handleSubmitGrade}
-              disabled={gradeMutation.isPending}
+              disabled={gradeMutation.isPending || !isScoreValid || !feedback}
             >
               {gradeMutation.isPending && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />

@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import prisma from "../config/prisma.js";
 import { AppError } from "../utils/AppError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import { evaluateModuleCompletion } from "./enrollment.controller.js";
 
 /**
  * @desc    Submit Final Project
@@ -117,7 +118,7 @@ export const getMySubmission = asyncHandler(
  */
 export const createProject = asyncHandler(
   async (req: Request, res: Response) => {
-    const { moduleId, title, description, deadline } = req.body;
+    const { moduleId, title, description, deadline, passingScore } = req.body;
 
     if (!moduleId || !title || !description) {
       throw new AppError("Module ID, Title, dan Description wajib diisi.", 400);
@@ -158,6 +159,7 @@ export const createProject = asyncHandler(
         title,
         description,
         deadline: deadline ? new Date(deadline) : null,
+        passingScore: passingScore ?? 80,
       },
     });
 
@@ -176,7 +178,7 @@ export const createProject = asyncHandler(
 export const updateProject = asyncHandler(
   async (req: Request, res: Response) => {
     const { id } = req.params as { id: string };
-    const { title, description, deadline } = req.body;
+    const { title, description, deadline, passingScore } = req.body;
 
     const project = await prisma.project.findUnique({
       where: { id },
@@ -203,7 +205,8 @@ export const updateProject = asyncHandler(
       data: {
         title,
         description,
-        deadline: deadline ? new Date(deadline) : undefined, // allow clearing deadline? need specific logic if null passed
+        deadline: deadline ? new Date(deadline) : undefined,
+        passingScore: passingScore !== undefined ? passingScore : undefined,
       },
     });
 
@@ -333,7 +336,7 @@ export const getProjectSubmissions = asyncHandler(
 export const gradeProject = asyncHandler(
   async (req: Request, res: Response) => {
     const { submissionId } = req.params as { submissionId: string };
-    const { status, feedback } = req.body;
+    const { status, feedback, score } = req.body;
 
     if (!["LULUS", "REVISI"].includes(status)) {
       throw new AppError("Status harus LULUS atau REVISI.", 400);
@@ -352,8 +355,6 @@ export const gradeProject = asyncHandler(
     }
 
     // Check ownership
-    // Note: Submission links to Course and Project. Project links to Module -> Course.
-    // We can use courseId from submission directly to check ownership.
     const course = await prisma.course.findUnique({
       where: { id: submission.courseId },
     });
@@ -365,16 +366,46 @@ export const gradeProject = asyncHandler(
       );
     }
 
+    // Calculate isPassed based on project's passingScore
+    const passingScore = submission.project?.passingScore ?? 80;
+    const numericScore = typeof score === "number" ? score : null;
+    const isPassed =
+      status === "LULUS" && numericScore !== null
+        ? numericScore >= passingScore
+        : status === "LULUS";
+
     const updatedSubmission = await prisma.projectSubmission.update({
       where: { id: submissionId },
       data: {
         status,
         feedback,
+        score: numericScore,
+        isPassed,
         reviewedBy: req.user!.id,
       },
     });
 
-    // TODO: If LULUS, Trigger Certificate Check logic here (Future Phase 4.4)
+    // If passed, evaluate module completion and enrollment status
+    if (isPassed && submission.project) {
+      const moduleId = submission.project.module.id;
+      const enrollment = await prisma.enrollment.findUnique({
+        where: {
+          userId_courseId: {
+            userId: submission.userId,
+            courseId: submission.courseId,
+          },
+        },
+      });
+
+      if (enrollment) {
+        await evaluateModuleCompletion(
+          enrollment.id,
+          moduleId,
+          submission.userId,
+          submission.courseId,
+        );
+      }
+    }
 
     res.status(200).json({
       success: true,

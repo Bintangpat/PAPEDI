@@ -22,6 +22,8 @@ export interface ProjectSubmission {
   githubUrl?: string;
   demoUrl?: string;
   status: "PENDING" | "LULUS" | "REVISI";
+  score?: number | null;
+  isPassed?: boolean;
   feedback?: string;
   submittedAt: string;
   student?: {
@@ -96,10 +98,10 @@ export const projectService = {
     return response.data.data;
   },
 
-  // Grade Project (Mentor)
+  // Grade Project (Mentor) — now sends numeric score
   gradeProject: async (
     submissionId: string,
-    data: { status: "LULUS" | "REVISI"; feedback: string },
+    data: { score: number; feedback: string },
   ) => {
     const response = await api.put<ApiResponse<ProjectSubmission>>(
       `/projects/submissions/${submissionId}`,

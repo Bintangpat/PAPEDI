@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { courseService } from "@/services/course.service";
 import { enrollmentService } from "@/services/enrollment.service";
 import { CourseSidebar } from "@/components/course-sidebar";
+import { ModuleProgressPanel } from "@/components/module-progress-panel";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useEffect } from "react";
@@ -47,7 +48,7 @@ export default function LearningLayout({
   }
 
   if (!enrollment?.isEnrolled) {
-    router.push(`/courses/${courseId}`); // Redirect to detail page if not enrolled
+    router.push(`/courses/${courseId}`);
     return null;
   }
 
@@ -55,12 +56,13 @@ export default function LearningLayout({
 
   return (
     <div className="bg-background flex h-screen overflow-hidden">
-      {/* Sidebar */}
-      <aside className="hidden w-80 flex-col md:flex">
+      {/* Left Sidebar — Navigation */}
+      <aside className="hidden w-72 flex-col md:flex">
         <SidebarProvider defaultOpen={true}>
           <CourseSidebar
             role={(user?.role as "student" | "mentor" | "admin") || "student"}
             courseId={courseId}
+            isCourseCompleted={enrollment?.data?.status === "COMPLETED"}
           />
         </SidebarProvider>
       </aside>
@@ -69,6 +71,17 @@ export default function LearningLayout({
       <main className="w-full flex-1 overflow-y-auto">
         <div className="container max-w-4xl py-6 md:py-10">{children}</div>
       </main>
+
+      {/* Right Sidebar — Module Progress */}
+      <aside className="bg-card hidden w-80 shrink-0 flex-col border-l lg:flex">
+        <ModuleProgressPanel
+          course={course}
+          courseId={courseId}
+          completedLessons={enrollment?.data?.completedLessons}
+          completedQuizzes={enrollment?.data?.completedQuizzes}
+          completedProjects={enrollment?.data?.completedProjects}
+        />
+      </aside>
     </div>
   );
 }

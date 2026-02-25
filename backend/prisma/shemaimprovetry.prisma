@@ -1,0 +1,383 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// ENUMS
+// ==========================================
+
+enum Role {
+  student
+  mentor
+  admin
+}
+
+enum OtpType {
+  REGISTER
+  LOGIN
+  FORGOT_PASSWORD
+}
+
+enum CourseCategory {
+  WEBDEV
+  SEO
+  SOCIAL_MEDIA
+}
+
+enum CourseLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum LessonType {
+  VIDEO
+  TEXT
+}
+
+enum SubmissionStatus {
+  PENDING
+  LULUS
+  REVISI
+}
+
+// ENUM BARU DARI REFERENSI
+enum EnrollmentStatus {
+  ACTIVE
+  COMPLETED
+  DROPPED
+  FAILED
+}
+
+enum ModuleStatus {
+  LOCKED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum CertificateStatus {
+  ELIGIBLE
+  ISSUED
+  REVOKED
+}
+
+// ==========================================
+// MODELS (EXISTING + IMPROVED)
+// ==========================================
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         Role     @default(student)
+  avatar       String?
+  bio          String?
+  portfolioUrl String?  @map("portfolio_url")
+  isVerified   Boolean  @default(false) @map("is_verified")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at") // Field baru
+
+  // Relations
+  enrollments          Enrollment[]
+  quizAttempts         QuizAttempt[]
+  projectSubmissions   ProjectSubmission[] @relation("StudentSubmissions")
+  reviewedProjects     ProjectSubmission[] @relation("ReviewerSubmissions")
+  certificates         Certificate[]
+  createdCourses       Course[]            @relation("CourseCreator")
+  activatedEnrollments Enrollment[]        @relation("ActivatedBy")
+  refreshTokens        RefreshToken[]
+  otps                 Otp[]
+  surveyResponse       SurveyResponse? // Relasi baru
+
+  @@map("users")
+}
+
+model Otp {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  otpHash   String   @map("otp_hash")
+  type      OtpType
+  expiresAt DateTime @map("expires_at")
+  attempts  Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("otps")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  token     String   @unique
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+model Course {
+  id           String         @id @default(uuid())
+  title        String
+  description  String
+  category     CourseCategory
+  level        CourseLevel    @default(BEGINNER)
+  thumbnail    String?
+  rating       Float          @default(0)
+  passingScore Float          @default(80) @map("passing_score") // Field baru
+  isPublished  Boolean        @default(false) @map("is_published")
+  createdBy    String         @map("created_by")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+  deletedAt    DateTime?      @map("deleted_at") // Field baru
+
+  // Relations
+  creator      User                @relation("CourseCreator", fields: [createdBy], references: [id])
+  modules      Module[]
+  enrollments  Enrollment[]
+  submissions  ProjectSubmission[]
+  certificates Certificate[]
+  batches      Batch[] // Relasi baru
+
+  @@map("courses")
+}
+
+// MODEL BARU: Batch Pembelajaran
+model Batch {
+  id         String   @id @default(uuid())
+  courseId   String   @map("course_id")
+  name       String
+  startDate  DateTime @map("start_date")
+  endDate    DateTime @map("end_date")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  course      Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  enrollments Enrollment[]
+
+  @@map("batches")
+}
+
+model Module {
+  id        String   @id @default(uuid())
+  title     String
+  order     Int
+  courseId  String   @map("course_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  course   Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lesson   Lesson[]
+  quiz     Quiz?
+  project  Project?
+  progress ModuleProgress[] // Relasi baru
+
+  @@unique([courseId, order])
+  @@map("modules")
+}
+
+model Lesson {
+  id        String     @id @default(uuid())
+  title     String
+  type      LessonType @default(TEXT)
+  content   String?
+  videoUrl  String?    @map("video_url")
+  order     Int
+  moduleId  String     @map("module_id")
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+
+  // Relations
+  module Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@unique([moduleId, order])
+  @@map("lessons")
+}
+
+model Quiz {
+  id           String   @id @default(uuid())
+  moduleId     String   @unique @map("module_id")
+  passingScore Int      @default(80) @map("passing_score")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  module    Module         @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  questions QuizQuestion[]
+  attempts  QuizAttempt[]
+
+  @@map("quizzes")
+}
+
+model QuizQuestion {
+  id            String   @id @default(uuid())
+  quizId        String   @map("quiz_id")
+  question      String
+  options       String[] // Array of options (tetap dipertahankan dari versi lama)
+  correctAnswer Int      @map("correct_answer") // Index of correct option
+  order         Int
+
+  // Relations
+  quiz Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  @@unique([quizId, order])
+  @@map("quiz_questions")
+}
+
+model QuizAttempt {
+  id            String   @id @default(uuid())
+  userId        String   @map("user_id")
+  quizId        String   @map("quiz_id")
+  answers       Int[]    // Array of selected option indices
+  score         Float
+  passed        Boolean
+  attemptNumber Int?     @map("attempt_number") // Field baru opsional
+  attemptedAt   DateTime @default(now()) @map("attempted_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quiz Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  @@map("quiz_attempts")
+}
+
+model Project {
+  id           String    @id @default(uuid())
+  moduleId     String    @unique @map("module_id")
+  title        String
+  description  String
+  deadline     DateTime?
+  passingScore Float     @default(80) @map("passing_score") // Field baru
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  module      Module              @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  submissions ProjectSubmission[]
+  
+  @@map("projects")
+}
+
+model ProjectSubmission {
+  id         String           @id @default(uuid())
+  userId     String           @map("user_id")
+  courseId   String           @map("course_id")
+  projectId  String?          @map("project_id")
+  githubUrl  String?          @map("github_url")
+  demoUrl    String?          @map("demo_url")
+  status     SubmissionStatus @default(PENDING)
+  score      Float?           // Field baru
+  isPassed   Boolean?         @map("is_passed") // Field baru
+  feedback   String?
+  reviewedBy String?          @map("reviewed_by")
+  submittedAt DateTime        @default(now()) @map("submitted_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+
+  // Relations
+  student  User     @relation("StudentSubmissions", fields: [userId], references: [id], onDelete: Cascade)
+  reviewer User?    @relation("ReviewerSubmissions", fields: [reviewedBy], references: [id])
+  course   Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  project  Project? @relation(fields: [projectId], references: [id])
+
+  @@map("project_submissions")
+}
+
+model Enrollment {
+  id            String           @id @default(uuid())
+  userId        String           @map("user_id")
+  courseId      String           @map("course_id")
+  batchId       String?          @map("batch_id") // Field baru opsional agar aman migrasi
+  activatedById String?          @map("activated_by_id")
+  status        EnrollmentStatus @default(ACTIVE) // Field baru
+  finalScore    Float?           @map("final_score") // Field baru
+  isEligibleCert Boolean         @default(false) @map("is_eligible_cert") // Field baru
+  enrolledAt    DateTime         @default(now()) @map("enrolled_at")
+  updatedAt     DateTime         @updatedAt @default(now()) @map("updated_at")
+
+  // Progress tracking: store completed lesson & quiz IDs as arrays
+  completedLessons String[] @default([]) @map("completed_lessons")
+  completedQuizzes String[] @default([]) @map("completed_quizzes")
+
+  // Relations
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course         Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  batch          Batch?           @relation(fields: [batchId], references: [id]) // Relasi baru
+  activatedBy    User?            @relation("ActivatedBy", fields: [activatedById], references: [id])
+  moduleProgress ModuleProgress[] // Relasi baru
+  certificates   Certificate[]    // Relasi baru
+
+  @@unique([userId, courseId])
+  @@map("enrollments")
+}
+
+// MODEL BARU: Track progres per modul yang lebih spesifik
+model ModuleProgress {
+  id               String       @id @default(uuid())
+  enrollmentId     String       @map("enrollment_id")
+  moduleId         String       @map("module_id")
+  status           ModuleStatus @default(LOCKED)
+  averageQuizScore Float?       @map("average_quiz_score")
+  isPassed         Boolean      @default(false) @map("is_passed")
+
+  enrollment Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  module     Module     @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@map("module_progress")
+}
+
+model Certificate {
+  id                String            @id @default(uuid())
+  userId            String            @map("user_id")
+  courseId          String            @map("course_id")
+  enrollmentId      String?           @map("enrollment_id") // Field baru opsional
+  serialNumber      String            @unique @map("serial_number")
+  finalScore        Float?            @map("final_score") // Field baru opsional
+  grade             String?           // Field baru
+  status            CertificateStatus @default(ISSUED) // Field baru
+  verificationToken String?           @unique @map("verification_token") // Field baru
+  pdfUrl            String?           @map("pdf_url") // Field baru
+  issuedAt          DateTime          @default(now()) @map("issued_at")
+  revokedAt         DateTime?         @map("revoked_at") // Field baru
+
+  // Relations
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course     Course      @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  enrollment Enrollment? @relation(fields: [enrollmentId], references: [id])
+
+  @@unique([userId, courseId])
+  @@map("certificates")
+}
+
+// MODEL BARU: Sistem Survei & Rekomendasi
+model SurveyResponse {
+  id                  String         @id @default(uuid())
+  userId              String         @unique @map("user_id")
+  q1Goal              String         @map("q1_goal")
+  q2Experience        String         @map("q2_experience")
+  q3Interest          CourseCategory @map("q3_interest")
+  q4LearningStyle     String         @map("q4_learning_style")
+  q5TimeCommitment    String         @map("q5_time_commitment")
+  recommendedCategory CourseCategory @map("recommended_category")
+  recommendedLevel    CourseLevel    @map("recommended_level")
+  scoreBreakdown      Json?          @map("score_breakdown")
+  createdAt           DateTime       @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("survey_responses")
+}

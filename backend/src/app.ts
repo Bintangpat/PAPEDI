@@ -18,6 +18,9 @@ import portfolioRoutes from "./routes/portfolio.routes.js";
 import certificateRoutes from "./routes/certificate.routes.js";
 import userRoutes from "./routes/user.routes.js";
 import studentRoutes from "./routes/student.routes.js";
+import surveyRoutes from "./routes/survey.routes.js";
+import batchRoutes from "./routes/batch.routes.js";
+import uploadRoutes from "./routes/upload.routes.js";
 
 // Middleware imports
 import { errorHandler } from "./middleware/errorHandler.js";
@@ -85,6 +88,9 @@ app.use("/api/v1/portfolio", portfolioRoutes);
 app.use("/api/v1/certificates", certificateRoutes);
 app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/student", studentRoutes);
+app.use("/api/v1/survey", surveyRoutes);
+app.use("/api/v1/batches", batchRoutes);
+app.use("/api/v1/upload", uploadRoutes);
 
 // 404 handler
 app.use((_req, res) => {
