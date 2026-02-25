@@ -1,8 +1,8 @@
 import { Request, Response } from "express";
+import crypto from "crypto";
 import prisma from "../config/prisma.js";
 import { AppError } from "../utils/AppError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
-import { v4 as uuidv4 } from "uuid";
 import { calculateFinalScore } from "./enrollment.controller.js";
 
 /**
@@ -216,7 +216,7 @@ export const generateCertificate = asyncHandler(
     // 5. Generate Certificate
     const serialNumber =
       `BS-${Date.now()}-${userId.substring(0, 4)}-${courseId.substring(0, 4)}`.toUpperCase();
-    const verificationToken = uuidv4();
+    const verificationToken = crypto.randomUUID();
 
     const certificate = await prisma.certificate.create({
       data: {
