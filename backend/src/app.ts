@@ -26,6 +26,9 @@ import { errorHandler } from "./middleware/errorHandler.js";
 
 const app = express();
 
+// Trust proxy for secure cookies in production (Vercel)
+app.set("trust proxy", 1);
+
 // ==========================================
 // GLOBAL MIDDLEWARE
 // ==========================================
