@@ -64,6 +64,11 @@ export const sidebarConfig: Record<Role, SidebarItemConfig[]> = {
       type: "certificate",
       requireCourseId: true,
     },
+    {
+      label: "Profile",
+      href: () => "/student/profile",
+      icon: Users,
+    },
   ],
 
   mentor: [
@@ -96,6 +101,11 @@ export const sidebarConfig: Record<Role, SidebarItemConfig[]> = {
       icon: FolderKanban,
       requireModuleId: true,
     },
+    {
+      label: "Profile",
+      href: () => "/mentor/profile",
+      icon: Users,
+    },
   ],
 
   admin: [
@@ -123,6 +133,11 @@ export const sidebarConfig: Record<Role, SidebarItemConfig[]> = {
       label: "Pengaturan",
       href: () => "/admin/settings",
       icon: Settings,
+    },
+    {
+      label: "Profile",
+      href: () => "/admin/profile",
+      icon: Users,
     },
   ],
 };

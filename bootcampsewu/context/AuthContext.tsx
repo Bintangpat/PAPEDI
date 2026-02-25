@@ -16,6 +16,8 @@ interface User {
   email: string;
   role: "student" | "mentor" | "admin";
   avatar?: string;
+  bio?: string;
+  portfolioUrl?: string;
 }
 
 interface AuthContextType {
@@ -23,6 +25,7 @@ interface AuthContextType {
   loading: boolean;
   login: (user: User) => void;
   logout: () => void;
+  updateUser: (data: Partial<User>) => void;
   isAuthenticated: boolean;
 }
 
@@ -76,6 +79,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const updateUser = (data: Partial<User>) => {
+    setUser((prev) => (prev ? { ...prev, ...data } : prev));
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -83,6 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         loading,
         login,
         logout,
+        updateUser,
         isAuthenticated: !!user,
       }}
     >

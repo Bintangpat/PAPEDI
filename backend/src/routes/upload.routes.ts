@@ -16,7 +16,6 @@ const router = Router();
 router.post(
   "/image",
   protect,
-  authorize(Role.admin),
   upload.single("image"),
   asyncHandler(async (req: Request, res: Response) => {
     if (!req.file) {

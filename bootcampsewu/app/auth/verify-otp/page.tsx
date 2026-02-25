@@ -19,13 +19,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import api from "@/lib/axios";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 
 const formSchema = z.object({
   otp: z.string().length(6, "Kode OTP harus 6 digit"),
 });
 
-export default function VerifyOtpPage() {
+function VerifyOtpContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { login } = useAuth();
@@ -133,5 +133,13 @@ export default function VerifyOtpPage() {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+export default function VerifyOtpPage() {
+  return (
+    <Suspense>
+      <VerifyOtpContent />
+    </Suspense>
   );
 }

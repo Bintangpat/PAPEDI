@@ -30,4 +30,22 @@ export const authService = {
     });
     return data;
   },
+
+  getProfile: async () => {
+    const { data } = await api.get<ApiResponse<any>>("/auth/me");
+    return data;
+  },
+
+  updateProfile: async (profileData: {
+    name?: string;
+    bio?: string;
+    portfolioUrl?: string;
+    avatar?: string;
+  }) => {
+    const { data } = await api.patch<ApiResponse<any>>(
+      "/auth/profile",
+      profileData,
+    );
+    return data;
+  },
 };

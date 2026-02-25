@@ -4,6 +4,8 @@ export interface User {
   email: string;
   role: "student" | "mentor" | "admin";
   avatar?: string;
+  bio?: string;
+  portfolioUrl?: string;
   createdAt: string;
   updatedAt: string;
 }
