@@ -58,7 +58,7 @@ export default function AdminLayout({
         <header className="bg-background flex h-16 items-center justify-between gap-4 border-b px-6 shadow-sm">
           <div className="flex h-full w-full items-center gap-4">
             <SidebarTrigger />
-            <div className="text-lg font-semibold">Mentor Area</div>
+            <div className="text-lg font-semibold">Admin Area</div>
           </div>
           {isAuthenticated ? (
             <DropdownMenu>
