@@ -43,7 +43,7 @@ export default function CoursesPage() {
       <div className="mb-8 space-y-2">
         <h1 className="text-4xl font-bold tracking-tight">Katalog Kursus</h1>
         <p className="text-muted-foreground text-lg">
-          Jelajahi berbagai materi pembelajaran untuk meningkatkan skill Anda.
+          Jelajahi berbagai materi pembelajaran untuk meningkatkan Anda.
         </p>
       </div>
 

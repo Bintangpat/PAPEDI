@@ -187,6 +187,20 @@ export const checkEnrollment = asyncHandler(
       });
     }
 
+    // Auto-heal: If user is still ACTIVE or FAILED but might have completed everything, re-evaluate.
+    if (enrollment.status === "ACTIVE" || enrollment.status === "FAILED") {
+      await evaluateEnrollmentStatus(enrollment.id, userId, courseId);
+      // Refetch after possible status change
+      const refreshedEnrollment = await prisma.enrollment.findUnique({
+        where: { id: enrollment.id },
+      });
+      if (refreshedEnrollment) {
+        enrollment.status = refreshedEnrollment.status;
+        enrollment.finalScore = refreshedEnrollment.finalScore;
+        enrollment.isEligibleCert = refreshedEnrollment.isEligibleCert;
+      }
+    }
+
     // Fetch passed projects
     const passedProjects = await prisma.projectSubmission.findMany({
       where: {
@@ -402,9 +416,15 @@ async function evaluateEnrollmentStatus(
 
   if (!enrollment) return;
 
+  const completedModuleIds = enrollment.moduleProgress
+    .filter((mp) => mp.status === "COMPLETED")
+    .map((mp) => mp.moduleId);
+
   const allModulesCompleted =
-    enrollment.moduleProgress.length > 0 &&
-    enrollment.moduleProgress.every((mp) => mp.status === "COMPLETED");
+    enrollment.course.modules.length === 0 ||
+    enrollment.course.modules.every((mod) =>
+      completedModuleIds.includes(mod.id),
+    );
 
   if (!allModulesCompleted) return;
 
@@ -477,8 +497,8 @@ async function calculateFinalScore(
 
       if (best) {
         totalQuizScore += best.score;
-        quizCount++;
       }
+      quizCount++;
     }
   }
 
@@ -509,8 +529,21 @@ async function calculateFinalScore(
     }
   }
 
-  // Final formula: Quiz 40% + Project 60%
-  const finalScore = avgQuizScore * 0.4 + avgProjectScore * 0.6;
+  const hasQuizzes = course.modules.some((m) => m.quiz !== null);
+  const quizWeight = hasQuizzes ? (projectIds.length > 0 ? 0.4 : 1.0) : 0;
+
+  const projectWeight = projectIds.length > 0 ? (hasQuizzes ? 0.6 : 1.0) : 0;
+
+  let finalScore = 0;
+
+  if (!hasQuizzes && projectIds.length === 0) {
+    // If no quizzes and no projects exist, completion alone awards 100
+    finalScore = 100;
+  } else {
+    // Final formula dynamically weighted
+    finalScore = avgQuizScore * quizWeight + avgProjectScore * projectWeight;
+  }
+
   return Math.round(finalScore * 100) / 100;
 }
 

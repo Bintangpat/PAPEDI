@@ -9,10 +9,15 @@ export default function Home() {
       {/* Navbar */}
       <nav className="mx-auto flex max-w-7xl items-center justify-between px-8 py-6">
         <div className="flex items-center gap-2">
-          <div className="bg-primary flex h-8 w-8 items-center justify-center rounded-lg">
-            <Code className="text-primary-foreground h-5 w-5" />
+          <div className="bg-background flex h-12 w-12 items-center justify-center rounded-lg">
+            <Image
+              src="/Logo.svg"
+              alt="Logo"
+              className="absolute mt-4"
+              height={120}
+              width={120}
+            />
           </div>
-          <span className="text-xl font-bold tracking-tight">SkillUp.</span>
         </div>
         <div className="text-muted-foreground hidden items-center gap-8 text-sm font-medium md:flex">
           <a href="#" className="hover:text-primary transition-colors">
@@ -171,7 +176,7 @@ export default function Home() {
       <footer className="border-border border-t py-12">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-6 px-8 md:flex-row">
           <p className="text-muted-foreground text-sm">
-            © 2026 SkillUp Bootcamp Platform. All rights reserved.
+            2026 SkillUp Bootcamp Platform. All rights reserved.
           </p>
           <div className="text-muted-foreground/80 flex gap-8 text-sm font-medium">
             <a href="#" className="hover:text-foreground">

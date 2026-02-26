@@ -157,11 +157,21 @@ export const generateCertificate = asyncHandler(
 
     if (!course) throw new AppError("Kursus tidak ditemukan.", 404);
 
-    // Check all ModuleProgress are COMPLETED
-    const allModulesCompleted =
-      enrollment.moduleProgress.length > 0 &&
-      enrollment.moduleProgress.length >= course.modules.length &&
-      enrollment.moduleProgress.every((mp) => mp.status === "COMPLETED");
+    // Check all ModuleProgress are COMPLETED for current modules
+    const expectedModules = course.modules.length;
+    let allModulesCompleted = false;
+
+    if (expectedModules === 0) {
+      allModulesCompleted = true;
+    } else {
+      const completedModuleIds = enrollment.moduleProgress
+        .filter((mp) => mp.status === "COMPLETED")
+        .map((mp) => mp.moduleId);
+
+      allModulesCompleted = course.modules.every((mod) =>
+        completedModuleIds.includes(mod.id),
+      );
+    }
 
     if (!allModulesCompleted) {
       const completedCount = enrollment.moduleProgress.filter(
